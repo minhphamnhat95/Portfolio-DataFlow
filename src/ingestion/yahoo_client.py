@@ -1,20 +1,37 @@
-from __future__ import annotations
-from typing import Any
 import yfinance as yf
 
 
 class YahooClient:
-    def get_daily_prices(self, symbol: str, start_date: str, end_date: str | None = None) -> dict[str, Any]:
+    def get_daily_prices(self, symbol, start_date, end_date=None):
         ticker = yf.Ticker(symbol)
-        frame = ticker.history(start=start_date, end=end_date, interval="1d", auto_adjust=False)
+
+        frame = ticker.history(
+            start=start_date,
+            end=end_date,
+            interval="1d",
+            auto_adjust=False,
+        )
+
         frame = frame.reset_index()
+        raw_rows = frame.to_dict(orient="records")
         records = []
-        for row in frame.to_dict(orient="records"):
-            normalized = {}
+
+        for row in raw_rows:
+            normalized_row = {}
+
             for key, value in row.items():
-                normalized[str(key)] = value.isoformat() if hasattr(value, "isoformat") else value
-            records.append(normalized)
-        return {
+                field_name = str(key)
+
+                if hasattr(value, "isoformat"):
+                    field_value = value.isoformat()
+                else:
+                    field_value = value
+
+                normalized_row[field_name] = field_value
+
+            records.append(normalized_row)
+
+        payload = {
             "source": "yahoo",
             "symbol": symbol,
             "start_date": start_date,
@@ -23,3 +40,4 @@ class YahooClient:
             "records": records,
         }
 
+        return payload

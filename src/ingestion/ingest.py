@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-from datetime import date
 from time import sleep
 
 from src.ingestion.binance_client import BinanceClient
@@ -12,34 +9,109 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def ingest_all(start_date: str, end_date: str | None, run_date: date, retries: int = 3) -> list[dict[str, object]]:
+def ingest_all(start_date, end_date, run_date, retries=3):
     yahoo = YahooClient()
     binance = BinanceClient()
-    results: list[dict[str, object]] = []
+    results = []
 
     for symbol in EQUITY_SYMBOLS:
-        results.append(_with_retry("yahoo", symbol, lambda s=symbol: yahoo.get_daily_prices(s, start_date, end_date), "equities", run_date, retries))
+        result = _with_retry(
+            client=yahoo,
+            source="yahoo",
+            symbol=symbol,
+            asset_class="equities",
+            start_date=start_date,
+            end_date=end_date,
+            run_date=run_date,
+            retries=retries,
+        )
+        results.append(result)
 
-    results.append(_with_retry("yahoo", FX_SYMBOL, lambda: yahoo.get_daily_prices(FX_SYMBOL, start_date, end_date), "fx", run_date, retries))
+    fx_result = _with_retry(
+        client=yahoo,
+        source="yahoo",
+        symbol=FX_SYMBOL,
+        asset_class="fx",
+        start_date=start_date,
+        end_date=end_date,
+        run_date=run_date,
+        retries=retries,
+    )
+    results.append(fx_result)
 
     for symbol in CRYPTO_SYMBOLS:
-        results.append(_with_retry("binance", symbol, lambda s=symbol: binance.get_daily_klines(s, start_date, end_date), "crypto", run_date, retries))
+        result = _with_retry(
+            client=binance,
+            source="binance",
+            symbol=symbol,
+            asset_class="crypto",
+            start_date=start_date,
+            end_date=end_date,
+            run_date=run_date,
+            retries=retries,
+        )
+        results.append(result)
 
     return results
 
 
-def _with_retry(source: str, symbol: str, fetcher, asset_class: str, run_date: date, retries: int) -> dict[str, object]:
-    last_error: str | None = None
+def _with_retry(client, source, symbol, asset_class, start_date, end_date, run_date, retries):
+    last_error = None
+
     for attempt in range(1, retries + 1):
         try:
-            payload = fetcher()
+            payload = _fetch_payload(client, source, symbol, start_date, end_date)
             path = write_bronze(asset_class, source, symbol, payload, run_date)
             record_count = len(payload.get("records", []))
+
             logger.info("Ingested %s %s with %s records", source, symbol, record_count)
-            return {"source": source, "symbol": symbol, "status": "success", "records_loaded": record_count, "path": str(path), "error": None}
-        except Exception as exc:  # External APIs fail in wonderfully uncreative ways.
+
+            result = _build_success_result(source, symbol, record_count, path)
+            return result
+
+        except Exception as exc:
             last_error = str(exc)
             logger.warning("Attempt %s/%s failed for %s: %s", attempt, retries, symbol, last_error)
-            sleep(min(attempt * 2, 10))
-    return {"source": source, "symbol": symbol, "status": "failed", "records_loaded": 0, "path": None, "error": last_error}
 
+            wait_seconds = min(attempt * 2, 10)
+            sleep(wait_seconds)
+
+    result = _build_failure_result(source, symbol, last_error)
+    return result
+
+
+def _fetch_payload(client, source, symbol, start_date, end_date):
+    if source == "yahoo":
+        payload = client.get_daily_prices(symbol, start_date, end_date)
+    elif source == "binance":
+        payload = client.get_daily_klines(symbol, start_date, end_date)
+    else:
+        raise ValueError(f"Unsupported source: {source}")
+
+    return payload
+
+
+def _build_success_result(source, symbol, record_count, path):
+    result = {
+        "source": source,
+        "symbol": symbol,
+        "status": "success",
+        "records_loaded": record_count,
+        "path": str(path),
+        "error": None,
+    }
+
+    return result
+
+
+def _build_failure_result(source, symbol, error):
+    result = {
+        "source": source,
+        "symbol": symbol,
+        "status": "failed",
+        "records_loaded": 0,
+        "path": None,
+        "error": error,
+    }
+
+    return result
