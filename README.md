@@ -87,9 +87,51 @@ The default validation rule fails the command if more than `25%` of expected Bro
 python -m pytest
 ```
 
+## Spark
+
+The reusable Spark session helper is:
+
+```text
+src/transformation/spark_session.py
+```
+
+Quick smoke test:
+
+```powershell
+python -c "from src.transformation.spark_session import build_spark_session, stop_spark_session; spark = build_spark_session('spark-smoke-test', 'local[1]'); print(spark.range(1).count()); stop_spark_session(spark)"
+```
+
+## Silver Transformation
+
+Transform Bronze JSON files into Silver Parquet tables:
+
+```powershell
+python -m src.transformation.bronze_to_silver --run-date 2026-06-16 --master local[1]
+```
+
+This currently handles:
+
+```text
+Config asset list
+  -> symbol/asset_class/source/currency metadata
+  -> data/silver/assets/
+
+Bronze Yahoo equities JSON
+  -> Date/Open/High/Low/Close/Volume
+  -> data/silver/asset_prices/
+
+Bronze Binance crypto JSON
+  -> open_time/open/high/low/close/volume
+  -> data/silver/asset_prices/
+
+Bronze Yahoo FX JSON
+  -> Date/Close
+  -> data/silver/fx_rates/
+```
+
 ## Future Enhancements
 
-- Silver and Gold transformations
+- Gold transformations
 - PostgreSQL serving tables
 - Airflow orchestration
 - dbt models and tests
