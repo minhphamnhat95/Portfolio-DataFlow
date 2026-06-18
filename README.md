@@ -1,12 +1,14 @@
 # Financial Market Data Ingestion
 
-Small local ingestion project that fetches ASX equity, crypto, and FX reference data, stores raw API payloads as local JSON files, and validates the Bronze files.
+Small local market data project that fetches ASX equity, crypto, and FX reference data, stores raw API payloads as local JSON files, validates the Bronze files, transforms them into Silver Parquet tables, and builds Gold portfolio metrics.
 
 ```mermaid
 flowchart LR
   A[Yahoo Finance / Binance] --> B[Python ingestion clients]
   B --> C[Local Bronze JSON files]
   C --> D[Bronze validation]
+  D --> E[Spark Silver Parquet]
+  E --> F[Spark Gold portfolio metrics]
 ```
 
 ## Scope
@@ -15,7 +17,7 @@ flowchart LR
 - Crypto: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT`
 - FX reference: `AUDUSD=X`
 - Default backfill: `2023-01-01`
-- Current output: raw Bronze JSON plus validation results
+- Current output: Bronze JSON, validation results, Silver Parquet, and Gold portfolio metric Parquet
 
 ## Setup
 
@@ -129,9 +131,56 @@ Bronze Yahoo FX JSON
   -> data/silver/fx_rates/
 ```
 
+## Gold Portfolio Metrics
+
+Transform Silver Parquet tables into Gold portfolio metrics:
+
+```powershell
+python -m src.transformation.silver_to_gold --master local[1]
+```
+
+Current fixed demo portfolio:
+
+```text
+40% VAS.AX
+25% CBA.AX
+15% BHP.AX
+10% BTCUSDT
+10% ETHUSDT
+```
+
+Current Gold outputs:
+
+```text
+data/gold/asset_returns/
+  Per asset, per date:
+  symbol, asset_class, source, price_date, native close price, AUD close price, currency, daily return
+
+data/gold/portfolio_returns/
+  Per portfolio, per date:
+  portfolio_name, price_date, daily return, cumulative return
+
+data/gold/portfolio_summary/
+  One row per portfolio:
+  portfolio_name, start date, end date, observation count, annual return,
+  annual volatility, risk-free rate, Sharpe ratio, max drawdown
+```
+
+Metric notes:
+
+- `close_price_aud`: AUD assets stay unchanged. USDT crypto prices are divided by `AUDUSD=X`, treating USDT as USD-equivalent.
+- `daily_return`: percentage change from the previous available AUD close price for the same asset.
+- `portfolio_returns.daily_return`: weighted sum of each asset's daily return using the fixed target weights.
+- `cumulative_return`: compounded portfolio return from the first available portfolio return date.
+- `annual_return`: average daily portfolio return multiplied by `252` trading days.
+- `annual_volatility`: daily return standard deviation multiplied by the square root of `252`.
+- `sharpe_ratio`: `(annual_return - risk_free_rate) / annual_volatility`.
+- `max_drawdown`: largest percentage fall from a previous portfolio value peak.
+
 ## Future Enhancements
 
-- Gold transformations
+- Contribution planner for adding new money to the portfolio
+- Optimized target portfolio weights
 - PostgreSQL serving tables
 - Airflow orchestration
 - dbt models and tests
