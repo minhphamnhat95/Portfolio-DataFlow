@@ -10,6 +10,7 @@ REJECTED_DIR = DATA_DIR / "rejected"
 SPARK_LOCAL_DIR = DATA_DIR / "tmp" / "spark"
 SPARK_WAREHOUSE_DIR = DATA_DIR / "tmp" / "spark-warehouse"
 
+
 EQUITY_SYMBOLS = ["CBA.AX", "BHP.AX", "CSL.AX", "WOW.AX", "VAS.AX"]
 CRYPTO_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
 FX_SYMBOL = "AUDUSD=X"
@@ -33,3 +34,10 @@ def ensure_data_dirs():
     REJECTED_DIR.mkdir(parents=True, exist_ok=True)
     SPARK_LOCAL_DIR.mkdir(parents=True, exist_ok=True)
     SPARK_WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+DEFAULT_POSTGRES_HOST = "127.0.0.1"
+DEFAULT_POSTGRES_PORT = "5432"
+DEFAULT_POSTGRES_DATABASE = "finance_market"
+DEFAULT_POSTGRES_USER = "postgres"
+DEFAULT_POSTGRES_PASSWORD = ""
