@@ -1,5 +1,11 @@
 import os
-import src.utils.config
+
+from src.utils.config import DEFAULT_POSTGRES_HOST
+from src.utils.config import DEFAULT_POSTGRES_PORT
+from src.utils.config import DEFAULT_POSTGRES_DATABASE
+from src.utils.config import DEFAULT_POSTGRES_USER
+from src.utils.config import DEFAULT_POSTGRES_PASSWORD
+
 
 def get_postgres_config():
     database_name = os.getenv("POSTGRES_DATABASE")

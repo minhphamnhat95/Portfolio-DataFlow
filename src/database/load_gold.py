@@ -5,6 +5,12 @@ from datetime import timezone
 from pathlib import Path
 from uuid import uuid4
 
+from src.utils.config import DEFAULT_POSTGRES_HOST
+from src.utils.config import DEFAULT_POSTGRES_PORT
+from src.utils.config import DEFAULT_POSTGRES_DATABASE
+from src.utils.config import DEFAULT_POSTGRES_USER
+from src.utils.config import DEFAULT_POSTGRES_PASSWORD
+
 if __package__ is None or __package__ == "":
     project_root = Path(__file__).resolve().parents[2]
     sys.path.append(str(project_root))
