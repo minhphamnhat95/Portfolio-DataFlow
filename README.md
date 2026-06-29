@@ -9,6 +9,7 @@ flowchart LR
   C --> D[Bronze validation]
   D --> E[Spark Silver Parquet]
   E --> F[Spark Gold portfolio metrics]
+  F --> G[PostgreSQL serving tables]
 ```
 
 ## Scope
@@ -17,7 +18,7 @@ flowchart LR
 - Crypto: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT`
 - FX reference: `AUDUSD=X`
 - Default backfill: `2023-01-01`
-- Current output: Bronze JSON, validation results, Silver Parquet, and Gold portfolio metric Parquet
+- Current output: Bronze JSON, validation results, Silver Parquet, Gold portfolio metric Parquet, and PostgreSQL serving tables
 
 ## Setup
 
@@ -28,6 +29,18 @@ pip install -r requirements.txt
 ```
 
 ## Run
+
+Run the full local pipeline end to end:
+
+```powershell
+python -m src.pipeline.run_market_pipeline --start-date 2023-01-01 --spark-master local[1]
+```
+
+For local PostgreSQL loading, set your database password in the current PowerShell session first:
+
+```powershell
+$env:POSTGRES_PASSWORD="your_postgres_password"
+```
 
 Fetch data, store raw JSON files locally, and validate the Bronze files:
 
@@ -177,10 +190,47 @@ Metric notes:
 - `sharpe_ratio`: `(annual_return - risk_free_rate) / annual_volatility`.
 - `max_drawdown`: largest percentage fall from a previous portfolio value peak.
 
+## PostgreSQL Serving Layer
+
+Create PostgreSQL schemas and tables:
+
+```powershell
+python -m src.database.schema
+```
+
+Preview Gold Parquet row counts before loading:
+
+```powershell
+python -m src.database.load_gold --dry-run
+```
+
+Load Gold Parquet tables into PostgreSQL:
+
+```powershell
+python -m src.database.load_gold
+```
+
+Current PostgreSQL tables:
+
+```text
+gold.asset_returns
+gold.portfolio_returns
+gold.portfolio_summary
+audit.load_logs
+```
+
+Useful checks:
+
+```sql
+select count(*) from gold.asset_returns;
+select count(*) from gold.portfolio_returns;
+select count(*) from gold.portfolio_summary;
+select * from audit.load_logs order by started_at desc;
+```
+
 ## Future Enhancements
 
 - Contribution planner for adding new money to the portfolio
 - Optimized target portfolio weights
-- PostgreSQL serving tables
 - Airflow orchestration
 - dbt models and tests
