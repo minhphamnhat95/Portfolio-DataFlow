@@ -7,7 +7,7 @@ if __package__ is None or __package__ == "":
     sys.path.append(str(project_root))
 
 from src.database.load_gold import load_gold_tables
-from src.pipeline.run_daily import run_daily
+from src.pipeline.run_daily import run_daily 
 from src.transformation.bronze_to_silver import transform_bronze_to_silver_for_run_date
 from src.transformation.silver_to_gold import transform_silver_to_gold
 from src.transformation.spark_session import build_spark_session

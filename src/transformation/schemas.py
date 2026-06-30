@@ -136,6 +136,39 @@ def gold_asset_return_schema():
     return schema
 
 
+def gold_date_spine_schema():
+    schema = StructType(
+        [
+            StructField("calendar_date", DateType(), False),
+        ]
+    )
+
+    return schema
+
+
+def gold_asset_return_calendar_schema():
+    schema = StructType(
+        [
+            StructField("symbol", StringType(), False),
+            StructField("asset_class", StringType(), False),
+            StructField("source", StringType(), False),
+            StructField("price_date", DateType(), False),
+            StructField("close_price_native", DoubleType(), False),
+            StructField("close_price_aud", DoubleType(), False),
+            StructField("currency", StringType(), False),
+            StructField("daily_return", DoubleType(), True),
+            StructField("is_price_observed", BooleanType(), False),
+            StructField("is_price_forward_filled", BooleanType(), False),
+            StructField("is_fx_observed", BooleanType(), False),
+            StructField("is_fx_forward_filled", BooleanType(), False),
+            StructField("source_price_date", DateType(), False),
+            StructField("source_fx_date", DateType(), True),
+        ]
+    )
+
+    return schema
+
+
 def portfolio_weight_schema():
     schema = StructType(
         [
@@ -155,6 +188,24 @@ def gold_portfolio_return_schema():
             StructField("price_date", DateType(), False),
             StructField("daily_return", DoubleType(), False),
             StructField("cumulative_return", DoubleType(), False),
+        ]
+    )
+
+    return schema
+
+
+def gold_portfolio_return_calendar_schema():
+    schema = StructType(
+        [
+            StructField("portfolio_name", StringType(), False),
+            StructField("price_date", DateType(), False),
+            StructField("daily_return", DoubleType(), False),
+            StructField("cumulative_return", DoubleType(), False),
+            StructField("has_forward_filled_price", BooleanType(), False),
+            StructField("has_forward_filled_fx", BooleanType(), False),
+            StructField("observed_asset_count", LongType(), False),
+            StructField("forward_filled_price_count", LongType(), False),
+            StructField("forward_filled_fx_count", LongType(), False),
         ]
     )
 

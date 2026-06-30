@@ -5,12 +5,6 @@ from datetime import timezone
 from pathlib import Path
 from uuid import uuid4
 
-from src.utils.config import DEFAULT_POSTGRES_HOST
-from src.utils.config import DEFAULT_POSTGRES_PORT
-from src.utils.config import DEFAULT_POSTGRES_DATABASE
-from src.utils.config import DEFAULT_POSTGRES_USER
-from src.utils.config import DEFAULT_POSTGRES_PASSWORD
-
 if __package__ is None or __package__ == "":
     project_root = Path(__file__).resolve().parents[2]
     sys.path.append(str(project_root))
@@ -42,6 +36,37 @@ GOLD_TABLE_CONFIGS = [
         ],
     },
     {
+        "gold_folder_name": "date_spine",
+        "schema_name": "gold",
+        "table_name": "date_spine",
+        "qualified_table_name": "gold.date_spine",
+        "columns": [
+            "calendar_date",
+        ],
+    },
+    {
+        "gold_folder_name": "asset_returns_calendar",
+        "schema_name": "gold",
+        "table_name": "asset_returns_calendar",
+        "qualified_table_name": "gold.asset_returns_calendar",
+        "columns": [
+            "symbol",
+            "asset_class",
+            "source",
+            "price_date",
+            "close_price_native",
+            "close_price_aud",
+            "currency",
+            "daily_return",
+            "is_price_observed",
+            "is_price_forward_filled",
+            "is_fx_observed",
+            "is_fx_forward_filled",
+            "source_price_date",
+            "source_fx_date",
+        ],
+    },
+    {
         "gold_folder_name": "portfolio_returns",
         "schema_name": "gold",
         "table_name": "portfolio_returns",
@@ -54,10 +79,44 @@ GOLD_TABLE_CONFIGS = [
         ],
     },
     {
+        "gold_folder_name": "portfolio_returns_calendar",
+        "schema_name": "gold",
+        "table_name": "portfolio_returns_calendar",
+        "qualified_table_name": "gold.portfolio_returns_calendar",
+        "columns": [
+            "portfolio_name",
+            "price_date",
+            "daily_return",
+            "cumulative_return",
+            "has_forward_filled_price",
+            "has_forward_filled_fx",
+            "observed_asset_count",
+            "forward_filled_price_count",
+            "forward_filled_fx_count",
+        ],
+    },
+    {
         "gold_folder_name": "portfolio_summary",
         "schema_name": "gold",
         "table_name": "portfolio_summary",
         "qualified_table_name": "gold.portfolio_summary",
+        "columns": [
+            "portfolio_name",
+            "start_date",
+            "end_date",
+            "observation_count",
+            "annual_return",
+            "annual_volatility",
+            "risk_free_rate",
+            "sharpe_ratio",
+            "max_drawdown",
+        ],
+    },
+    {
+        "gold_folder_name": "portfolio_summary_calendar",
+        "schema_name": "gold",
+        "table_name": "portfolio_summary_calendar",
+        "qualified_table_name": "gold.portfolio_summary_calendar",
         "columns": [
             "portfolio_name",
             "start_date",

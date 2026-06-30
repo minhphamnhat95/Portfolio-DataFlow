@@ -178,3 +178,267 @@ def test_build_portfolio_returns_and_summary_metrics(tmp_path, monkeypatch):
         assert read_df.count() == 2
     finally:
         stop_spark_session(spark)
+
+
+def test_build_date_spine_creates_every_calendar_day():
+    spark = build_spark_session("test-gold-date-spine", "local[1]")
+
+    try:
+        asset_price_rows = [
+            {
+                "symbol": "CBA.AX",
+                "asset_class": "equity",
+                "source": "yahoo",
+                "price_date": date(2026, 1, 2),
+                "close_price": 100.0,
+                "currency": "AUD",
+            },
+            {
+                "symbol": "CBA.AX",
+                "asset_class": "equity",
+                "source": "yahoo",
+                "price_date": date(2026, 1, 5),
+                "close_price": 110.0,
+                "currency": "AUD",
+            },
+        ]
+
+        asset_prices_df = spark.createDataFrame(asset_price_rows)
+        date_spine_df = silver_to_gold.build_date_spine(asset_prices_df)
+        rows = date_spine_df.orderBy("calendar_date").collect()
+
+        assert len(rows) == 4
+        assert rows[0].calendar_date == date(2026, 1, 2)
+        assert rows[1].calendar_date == date(2026, 1, 3)
+        assert rows[2].calendar_date == date(2026, 1, 4)
+        assert rows[3].calendar_date == date(2026, 1, 5)
+    finally:
+        stop_spark_session(spark)
+
+
+def test_asset_returns_calendar_forward_fills_prices_and_fx():
+    spark = build_spark_session("test-gold-calendar-asset-returns", "local[1]")
+
+    try:
+        asset_price_rows = [
+            {
+                "symbol": "CBA.AX",
+                "asset_class": "equity",
+                "source": "yahoo",
+                "price_date": date(2026, 1, 2),
+                "close_price": 100.0,
+                "currency": "AUD",
+            },
+            {
+                "symbol": "CBA.AX",
+                "asset_class": "equity",
+                "source": "yahoo",
+                "price_date": date(2026, 1, 5),
+                "close_price": 110.0,
+                "currency": "AUD",
+            },
+            {
+                "symbol": "BTCUSDT",
+                "asset_class": "crypto",
+                "source": "binance",
+                "price_date": date(2026, 1, 2),
+                "close_price": 50.0,
+                "currency": "USDT",
+            },
+            {
+                "symbol": "BTCUSDT",
+                "asset_class": "crypto",
+                "source": "binance",
+                "price_date": date(2026, 1, 3),
+                "close_price": 55.0,
+                "currency": "USDT",
+            },
+            {
+                "symbol": "BTCUSDT",
+                "asset_class": "crypto",
+                "source": "binance",
+                "price_date": date(2026, 1, 4),
+                "close_price": 60.0,
+                "currency": "USDT",
+            },
+            {
+                "symbol": "BTCUSDT",
+                "asset_class": "crypto",
+                "source": "binance",
+                "price_date": date(2026, 1, 5),
+                "close_price": 66.0,
+                "currency": "USDT",
+            },
+        ]
+        fx_rate_rows = [
+            {
+                "symbol": "AUDUSD=X",
+                "source": "yahoo",
+                "rate_date": date(2026, 1, 2),
+                "base_currency": "AUD",
+                "quote_currency": "USD",
+                "rate": 0.5,
+            },
+            {
+                "symbol": "AUDUSD=X",
+                "source": "yahoo",
+                "rate_date": date(2026, 1, 5),
+                "base_currency": "AUD",
+                "quote_currency": "USD",
+                "rate": 0.6,
+            },
+        ]
+
+        asset_prices_df = spark.createDataFrame(asset_price_rows)
+        fx_rates_df = spark.createDataFrame(fx_rate_rows)
+        date_spine_df = silver_to_gold.build_date_spine(asset_prices_df)
+        calendar_df = silver_to_gold.build_asset_returns_calendar(asset_prices_df, fx_rates_df, date_spine_df)
+        rows = calendar_df.orderBy("symbol", "price_date").collect()
+
+        cba_weekend_row = None
+        btc_weekend_row = None
+        btc_monday_row = None
+
+        for row in rows:
+            if row.symbol == "CBA.AX" and row.price_date == date(2026, 1, 3):
+                cba_weekend_row = row
+
+            if row.symbol == "BTCUSDT" and row.price_date == date(2026, 1, 3):
+                btc_weekend_row = row
+
+            if row.symbol == "BTCUSDT" and row.price_date == date(2026, 1, 5):
+                btc_monday_row = row
+
+        assert len(rows) == 8
+        assert cba_weekend_row is not None
+        assert cba_weekend_row.close_price_native == 100.0
+        assert cba_weekend_row.close_price_aud == 100.0
+        assert cba_weekend_row.daily_return == 0.0
+        assert cba_weekend_row.is_price_observed is False
+        assert cba_weekend_row.is_price_forward_filled is True
+        assert cba_weekend_row.is_fx_observed is False
+        assert cba_weekend_row.is_fx_forward_filled is False
+        assert cba_weekend_row.source_price_date == date(2026, 1, 2)
+        assert cba_weekend_row.source_fx_date is None
+
+        assert btc_weekend_row is not None
+        assert btc_weekend_row.close_price_native == 55.0
+        assert btc_weekend_row.close_price_aud == 110.0
+        assert abs(btc_weekend_row.daily_return - 0.10) < 0.000001
+        assert btc_weekend_row.is_price_observed is True
+        assert btc_weekend_row.is_price_forward_filled is False
+        assert btc_weekend_row.is_fx_observed is False
+        assert btc_weekend_row.is_fx_forward_filled is True
+        assert btc_weekend_row.source_fx_date == date(2026, 1, 2)
+
+        assert btc_monday_row is not None
+        assert btc_monday_row.close_price_native == 66.0
+        assert btc_monday_row.close_price_aud == 110.0
+        assert abs(btc_monday_row.daily_return - -0.08333333333333337) < 0.000001
+        assert btc_monday_row.is_fx_observed is True
+        assert btc_monday_row.is_fx_forward_filled is False
+        assert btc_monday_row.source_fx_date == date(2026, 1, 5)
+    finally:
+        stop_spark_session(spark)
+
+
+def test_portfolio_returns_calendar_has_daily_rows_and_fill_flags():
+    spark = build_spark_session("test-gold-calendar-portfolio-returns", "local[1]")
+
+    try:
+        asset_return_rows = [
+            {
+                "symbol": "CBA.AX",
+                "asset_class": "equity",
+                "source": "yahoo",
+                "price_date": date(2026, 1, 2),
+                "close_price_native": 100.0,
+                "close_price_aud": 100.0,
+                "currency": "AUD",
+                "daily_return": None,
+                "is_price_observed": True,
+                "is_price_forward_filled": False,
+                "is_fx_observed": False,
+                "is_fx_forward_filled": False,
+                "source_price_date": date(2026, 1, 2),
+                "source_fx_date": None,
+            },
+            {
+                "symbol": "CBA.AX",
+                "asset_class": "equity",
+                "source": "yahoo",
+                "price_date": date(2026, 1, 3),
+                "close_price_native": 100.0,
+                "close_price_aud": 100.0,
+                "currency": "AUD",
+                "daily_return": 0.0,
+                "is_price_observed": False,
+                "is_price_forward_filled": True,
+                "is_fx_observed": False,
+                "is_fx_forward_filled": False,
+                "source_price_date": date(2026, 1, 2),
+                "source_fx_date": None,
+            },
+            {
+                "symbol": "BTCUSDT",
+                "asset_class": "crypto",
+                "source": "binance",
+                "price_date": date(2026, 1, 2),
+                "close_price_native": 50.0,
+                "close_price_aud": 100.0,
+                "currency": "USDT",
+                "daily_return": None,
+                "is_price_observed": True,
+                "is_price_forward_filled": False,
+                "is_fx_observed": True,
+                "is_fx_forward_filled": False,
+                "source_price_date": date(2026, 1, 2),
+                "source_fx_date": date(2026, 1, 2),
+            },
+            {
+                "symbol": "BTCUSDT",
+                "asset_class": "crypto",
+                "source": "binance",
+                "price_date": date(2026, 1, 3),
+                "close_price_native": 55.0,
+                "close_price_aud": 110.0,
+                "currency": "USDT",
+                "daily_return": 0.10,
+                "is_price_observed": True,
+                "is_price_forward_filled": False,
+                "is_fx_observed": False,
+                "is_fx_forward_filled": True,
+                "source_price_date": date(2026, 1, 3),
+                "source_fx_date": date(2026, 1, 2),
+            },
+        ]
+        weights = [
+            {"symbol": "CBA.AX", "weight": 0.50},
+            {"symbol": "BTCUSDT", "weight": 0.50},
+        ]
+
+        asset_returns_calendar_df = spark.createDataFrame(asset_return_rows)
+        weights_df = silver_to_gold.build_portfolio_weights_dataframe(spark, "test_portfolio", weights)
+        portfolio_returns_calendar_df = silver_to_gold.build_portfolio_returns_calendar(
+            asset_returns_calendar_df,
+            weights_df,
+        )
+        summary_calendar_df = silver_to_gold.build_portfolio_summary_calendar(portfolio_returns_calendar_df, 0.04)
+
+        portfolio_rows = portfolio_returns_calendar_df.orderBy("price_date").collect()
+        summary_row = summary_calendar_df.collect()[0]
+
+        assert len(portfolio_rows) == 1
+        assert portfolio_rows[0].price_date == date(2026, 1, 3)
+        assert abs(portfolio_rows[0].daily_return - 0.05) < 0.000001
+        assert abs(portfolio_rows[0].cumulative_return - 0.05) < 0.000001
+        assert portfolio_rows[0].has_forward_filled_price is True
+        assert portfolio_rows[0].has_forward_filled_fx is True
+        assert portfolio_rows[0].observed_asset_count == 1
+        assert portfolio_rows[0].forward_filled_price_count == 1
+        assert portfolio_rows[0].forward_filled_fx_count == 1
+        assert summary_row.portfolio_name == "test_portfolio"
+        assert summary_row.observation_count == 1
+        assert abs(summary_row.annual_return - 18.25) < 0.000001
+    finally:
+        stop_spark_session(spark)

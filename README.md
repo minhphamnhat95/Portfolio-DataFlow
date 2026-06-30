@@ -17,7 +17,7 @@ flowchart LR
 - Equities: `CBA.AX`, `BHP.AX`, `CSL.AX`, `WOW.AX`, `VAS.AX`
 - Crypto: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT`
 - FX reference: `AUDUSD=X`
-- Default backfill: `2023-01-01`
+- Default backfill: `2018-01-01`
 - Current output: Bronze JSON, validation results, Silver Parquet, Gold portfolio metric Parquet, and PostgreSQL serving tables
 
 ## Setup
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 Run the full local pipeline end to end:
 
 ```powershell
-python -m src.pipeline.run_market_pipeline --start-date 2023-01-01 --spark-master local[1]
+python -m src.pipeline.run_market_pipeline --start-date 2018-01-01 --spark-master local[1]
 ```
 
 For local PostgreSQL loading, set your database password in the current PowerShell session first:
@@ -45,7 +45,7 @@ $env:POSTGRES_PASSWORD="your_postgres_password"
 Fetch data, store raw JSON files locally, and validate the Bronze files:
 
 ```powershell
-python -m src.pipeline.run_daily --start-date 2023-01-01
+python -m src.pipeline.run_daily --start-date 2018-01-01
 ```
 
 Fetch a smaller date range:
@@ -177,6 +177,22 @@ data/gold/portfolio_summary/
   One row per portfolio:
   portfolio_name, start date, end date, observation count, annual return,
   annual volatility, risk-free rate, Sharpe ratio, max drawdown
+
+data/gold/date_spine/
+  Daily calendar dates from the first Silver price date to the latest Silver price date
+
+data/gold/asset_returns_calendar/
+  Per asset, per calendar day:
+  filled native close price, filled AUD close price, daily return,
+  observed/forward-filled price flags, observed/forward-filled FX flags,
+  source price date, source FX date
+
+data/gold/portfolio_returns_calendar/
+  Per portfolio, per calendar day:
+  daily return, cumulative return, and fill-quality flags
+
+data/gold/portfolio_summary_calendar/
+  One row per portfolio using daily-calendar returns and 365-day annualization
 ```
 
 Metric notes:
@@ -189,6 +205,8 @@ Metric notes:
 - `annual_volatility`: daily return standard deviation multiplied by the square root of `252`.
 - `sharpe_ratio`: `(annual_return - risk_free_rate) / annual_volatility`.
 - `max_drawdown`: largest percentage fall from a previous portfolio value peak.
+- Calendar-aware Gold tables keep strict actual-observation tables unchanged, but forward-fill missing prices and FX rates for dashboard-friendly daily timelines.
+- Calendar-aware summary metrics use `365` days for annualization because those rows use calendar days, including weekends.
 
 ## PostgreSQL Serving Layer
 
@@ -214,8 +232,12 @@ Current PostgreSQL tables:
 
 ```text
 gold.asset_returns
+gold.date_spine
+gold.asset_returns_calendar
 gold.portfolio_returns
+gold.portfolio_returns_calendar
 gold.portfolio_summary
+gold.portfolio_summary_calendar
 audit.load_logs
 ```
 
@@ -223,8 +245,12 @@ Useful checks:
 
 ```sql
 select count(*) from gold.asset_returns;
+select count(*) from gold.date_spine;
+select count(*) from gold.asset_returns_calendar;
 select count(*) from gold.portfolio_returns;
+select count(*) from gold.portfolio_returns_calendar;
 select count(*) from gold.portfolio_summary;
+select * from gold.portfolio_summary_calendar;
 select * from audit.load_logs order by started_at desc;
 ```
 
