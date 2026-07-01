@@ -1,5 +1,10 @@
 import argparse
+import os
+import shutil
+import stat
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 from pyspark.sql import Window
@@ -518,11 +523,105 @@ def write_gold_table(dataframe, table_name, mode="overwrite"):
     output_path = GOLD_DIR / table_name
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    if mode.lower() == "overwrite":
+        remove_existing_output_path(output_path)
+
     writer = dataframe.write
     writer = writer.mode(mode)
     writer.parquet(str(output_path))
 
     return output_path
+
+
+def remove_existing_output_path(output_path):
+    if not output_path.exists():
+        return
+
+    max_attempts = 5
+
+    for attempt_number in range(max_attempts):
+        try:
+            if output_path.is_dir():
+                shutil.rmtree(output_path, onexc=make_path_writable_and_retry)
+            else:
+                os.chmod(output_path, stat.S_IWRITE)
+                output_path.unlink()
+
+            return
+        except OSError as error:
+            is_last_attempt = attempt_number == max_attempts - 1
+
+            if is_last_attempt:
+                powershell_result = remove_existing_output_path_with_powershell(output_path)
+
+                if powershell_result["removed"]:
+                    return
+
+                message = (
+                    "Could not remove existing Gold output folder: "
+                    + str(output_path)
+                    + ". Close Spark, Power BI, Explorer preview, or any process reading this folder, then rerun. "
+                    + "Original error: "
+                    + str(error)
+                )
+                if powershell_result["error_message"] is not None:
+                    message = message + " PowerShell fallback error: " + powershell_result["error_message"]
+
+                raise OSError(message) from error
+
+            time.sleep(0.5)
+
+
+def make_path_writable_and_retry(function, path, excinfo):
+    os.chmod(path, stat.S_IWRITE)
+    function(path)
+
+
+def remove_existing_output_path_with_powershell(output_path):
+    result = {
+        "removed": False,
+        "error_message": None,
+    }
+
+    if not sys.platform.startswith("win"):
+        return result
+
+    quoted_output_path = quote_powershell_literal_path(str(output_path))
+    command = "Remove-Item -LiteralPath " + quoted_output_path + " -Recurse -Force"
+
+    process = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            command,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    if process.returncode == 0 and not output_path.exists():
+        result["removed"] = True
+        return result
+
+    error_message = process.stderr.strip()
+    if error_message == "":
+        error_message = process.stdout.strip()
+
+    if error_message == "":
+        error_message = "PowerShell returned exit code " + str(process.returncode)
+
+    result["error_message"] = error_message
+
+    return result
+
+
+def quote_powershell_literal_path(path):
+    escaped_path = path.replace("'", "''")
+    quoted_path = "'" + escaped_path + "'"
+
+    return quoted_path
 
  
 def transform_silver_to_gold(spark, mode="overwrite"):

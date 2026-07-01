@@ -193,6 +193,16 @@ data/gold/portfolio_returns_calendar/
 
 data/gold/portfolio_summary_calendar/
   One row per portfolio using daily-calendar returns and 365-day annualization
+
+data/gold/optimized_portfolio_summary/
+  One row for the historical max-Sharpe portfolio:
+  portfolio name, lookback period, observation count, risk-free rate,
+  annual return, annual volatility, Sharpe ratio, optimizer method,
+  constraint set, and optimizer status
+
+data/gold/optimized_portfolio_weights/
+  Per optimized portfolio, per asset:
+  current weight, optimized weight, and weight difference
 ```
 
 Metric notes:
@@ -207,6 +217,13 @@ Metric notes:
 - `max_drawdown`: largest percentage fall from a previous portfolio value peak.
 - Calendar-aware Gold tables keep strict actual-observation tables unchanged, but forward-fill missing prices and FX rates for dashboard-friendly daily timelines.
 - Calendar-aware summary metrics use `365` days for annualization because those rows use calendar days, including weekends.
+- Optimized portfolio outputs use SciPy SLSQP to maximize historical Sharpe ratio from `asset_returns_calendar`; this is historical allocation analysis, not a future prediction model.
+
+Run only the portfolio optimizer:
+
+```powershell
+python -m src.transformation.portfolio_optimizer --master local[1]
+```
 
 ## PostgreSQL Serving Layer
 
@@ -238,6 +255,8 @@ gold.portfolio_returns
 gold.portfolio_returns_calendar
 gold.portfolio_summary
 gold.portfolio_summary_calendar
+gold.optimized_portfolio_summary
+gold.optimized_portfolio_weights
 audit.load_logs
 ```
 
@@ -251,12 +270,13 @@ select count(*) from gold.portfolio_returns;
 select count(*) from gold.portfolio_returns_calendar;
 select count(*) from gold.portfolio_summary;
 select * from gold.portfolio_summary_calendar;
+select * from gold.optimized_portfolio_summary;
+select * from gold.optimized_portfolio_weights;
 select * from audit.load_logs order by started_at desc;
 ```
 
 ## Future Enhancements
 
 - Contribution planner for adding new money to the portfolio
-- Optimized target portfolio weights
 - Airflow orchestration
 - dbt models and tests

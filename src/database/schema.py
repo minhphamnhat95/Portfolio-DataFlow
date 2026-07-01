@@ -117,6 +117,37 @@ CREATE TABLE IF NOT EXISTS gold.portfolio_summary_calendar (
 );
 """
 
+CREATE_GOLD_OPTIMIZED_PORTFOLIO_SUMMARY_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS gold.optimized_portfolio_summary (
+    portfolio_name TEXT NOT NULL,
+    as_of_date DATE NOT NULL,
+    lookback_start_date DATE NOT NULL,
+    lookback_end_date DATE NOT NULL,
+    observation_count BIGINT NOT NULL,
+    risk_free_rate DOUBLE PRECISION NOT NULL,
+    annual_return DOUBLE PRECISION,
+    annual_volatility DOUBLE PRECISION,
+    sharpe_ratio DOUBLE PRECISION,
+    optimizer_method TEXT NOT NULL,
+    constraint_set_name TEXT NOT NULL,
+    optimization_success BOOLEAN NOT NULL,
+    optimization_message TEXT,
+    PRIMARY KEY (portfolio_name, as_of_date)
+);
+"""
+
+CREATE_GOLD_OPTIMIZED_PORTFOLIO_WEIGHTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS gold.optimized_portfolio_weights (
+    portfolio_name TEXT NOT NULL,
+    as_of_date DATE NOT NULL,
+    symbol TEXT NOT NULL,
+    current_weight DOUBLE PRECISION NOT NULL,
+    optimized_weight DOUBLE PRECISION NOT NULL,
+    weight_difference DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (portfolio_name, as_of_date, symbol)
+);
+"""
+
 CREATE_AUDIT_LOAD_LOGS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS audit.load_logs (
     run_id TEXT NOT NULL,
@@ -149,6 +180,8 @@ def get_table_statements():
     statements.append(CREATE_GOLD_PORTFOLIO_RETURNS_CALENDAR_TABLE_SQL)
     statements.append(CREATE_GOLD_PORTFOLIO_SUMMARY_TABLE_SQL)
     statements.append(CREATE_GOLD_PORTFOLIO_SUMMARY_CALENDAR_TABLE_SQL)
+    statements.append(CREATE_GOLD_OPTIMIZED_PORTFOLIO_SUMMARY_TABLE_SQL)
+    statements.append(CREATE_GOLD_OPTIMIZED_PORTFOLIO_WEIGHTS_TABLE_SQL)
     statements.append(CREATE_AUDIT_LOAD_LOGS_TABLE_SQL)
 
     return statements

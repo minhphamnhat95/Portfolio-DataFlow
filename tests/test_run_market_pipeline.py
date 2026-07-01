@@ -73,6 +73,19 @@ def test_run_market_pipeline_calls_steps_in_order(monkeypatch):
 
         return result
 
+    def fake_optimize_portfolio_from_gold(spark, mode):
+        calls.append("optimizer")
+
+        assert mode == "overwrite"
+
+        result = {
+            "optimized_portfolio_summary_row_count": 1,
+            "optimized_portfolio_weights_row_count": 5,
+            "optimized_sharpe_ratio": 0.50,
+        }
+
+        return result
+
     def fake_stop_spark_session(spark):
         calls.append("spark_stop")
 
@@ -100,6 +113,7 @@ def test_run_market_pipeline_calls_steps_in_order(monkeypatch):
         fake_transform_bronze_to_silver_for_run_date,
     )
     monkeypatch.setattr(pipeline_module, "transform_silver_to_gold", fake_transform_silver_to_gold)
+    monkeypatch.setattr(pipeline_module, "optimize_portfolio_from_gold", fake_optimize_portfolio_from_gold)
     monkeypatch.setattr(pipeline_module, "stop_spark_session", fake_stop_spark_session)
     monkeypatch.setattr(pipeline_module, "load_gold_tables", fake_load_gold_tables)
 
@@ -112,10 +126,11 @@ def test_run_market_pipeline_calls_steps_in_order(monkeypatch):
         gold_mode="overwrite",
     )
 
-    assert calls == ["ingestion", "spark_start", "silver", "gold", "spark_stop", "postgres"]
+    assert calls == ["ingestion", "spark_start", "silver", "gold", "optimizer", "spark_stop", "postgres"]
     assert result["ingestion"]["run_id"] == "run_test"
     assert result["silver"]["asset_prices_row_count"] == 100
     assert result["gold"]["portfolio_summary_row_count"] == 1
+    assert result["optimizer"]["optimized_portfolio_weights_row_count"] == 5
     assert result["postgres"]["run_id"] == "load_test"
 
 

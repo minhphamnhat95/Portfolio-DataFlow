@@ -228,3 +228,40 @@ def gold_portfolio_summary_schema():
     )
 
     return schema
+
+
+def gold_optimized_portfolio_summary_schema():
+    schema = StructType(
+        [
+            StructField("portfolio_name", StringType(), False),
+            StructField("as_of_date", DateType(), False),
+            StructField("lookback_start_date", DateType(), False),
+            StructField("lookback_end_date", DateType(), False),
+            StructField("observation_count", LongType(), False),
+            StructField("risk_free_rate", DoubleType(), False),
+            StructField("annual_return", DoubleType(), True),
+            StructField("annual_volatility", DoubleType(), True),
+            StructField("sharpe_ratio", DoubleType(), True),
+            StructField("optimizer_method", StringType(), False),
+            StructField("constraint_set_name", StringType(), False),
+            StructField("optimization_success", BooleanType(), False),
+            StructField("optimization_message", StringType(), True),
+        ]
+    )
+
+    return schema
+
+
+def gold_optimized_portfolio_weight_schema():
+    schema = StructType(
+        [
+            StructField("portfolio_name", StringType(), False),
+            StructField("as_of_date", DateType(), False),
+            StructField("symbol", StringType(), False),
+            StructField("current_weight", DoubleType(), False),
+            StructField("optimized_weight", DoubleType(), False),
+            StructField("weight_difference", DoubleType(), False),
+        ]
+    )
+
+    return schema

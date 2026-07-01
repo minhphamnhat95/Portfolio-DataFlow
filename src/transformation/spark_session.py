@@ -40,6 +40,7 @@ def apply_default_spark_config(builder, enable_ui=False, ui_port=4040):
     builder = builder.config("spark.driver.bindAddress", "127.0.0.1")
     builder = builder.config("spark.local.dir", str(SPARK_LOCAL_DIR))
     builder = builder.config("spark.sql.warehouse.dir", SPARK_WAREHOUSE_DIR.as_uri())
+    builder = builder.config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.RawLocalFileSystem")
     builder = builder.config("spark.pyspark.python", python_executable)
     builder = builder.config("spark.pyspark.driver.python", python_executable)
 

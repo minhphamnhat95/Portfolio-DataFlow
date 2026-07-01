@@ -9,6 +9,7 @@ if __package__ is None or __package__ == "":
 from src.database.load_gold import load_gold_tables
 from src.pipeline.run_daily import run_daily 
 from src.transformation.bronze_to_silver import transform_bronze_to_silver_for_run_date
+from src.transformation.portfolio_optimizer import optimize_portfolio_from_gold
 from src.transformation.silver_to_gold import transform_silver_to_gold
 from src.transformation.spark_session import build_spark_session
 from src.transformation.spark_session import stop_spark_session
@@ -34,6 +35,7 @@ def run_market_pipeline(
         "ingestion": None,
         "silver": None,
         "gold": None,
+        "optimizer": None,
         "postgres": None,
     }
 
@@ -75,7 +77,7 @@ def run_market_pipeline(
         if skip_gold:
             print("Skipping Silver to Gold transformation.")
         else:
-            print("Step 3/4: Transforming Silver Parquet to Gold metrics.")
+            print("Step 3/4: Transforming Silver Parquet to Gold metrics and optimizer outputs.")
 
             if spark is None:
                 spark = build_spark_session("finance-market-data-local-pipeline", spark_master)
@@ -83,6 +85,10 @@ def run_market_pipeline(
             gold_result = transform_silver_to_gold(spark, gold_mode)
             result["gold"] = gold_result
             print_gold_result(gold_result)
+
+            optimizer_result = optimize_portfolio_from_gold(spark, gold_mode)
+            result["optimizer"] = optimizer_result
+            print_optimizer_result(optimizer_result)
     finally:
         stop_spark_session(spark)
 
@@ -122,6 +128,12 @@ def print_gold_result(result):
     print("Gold asset return rows: " + str(result["asset_returns_row_count"]))
     print("Gold portfolio return rows: " + str(result["portfolio_returns_row_count"]))
     print("Gold portfolio summary rows: " + str(result["portfolio_summary_row_count"]))
+
+
+def print_optimizer_result(result):
+    print("Gold optimized portfolio summary rows: " + str(result["optimized_portfolio_summary_row_count"]))
+    print("Gold optimized portfolio weights rows: " + str(result["optimized_portfolio_weights_row_count"]))
+    print("Gold optimized Sharpe ratio: " + str(result["optimized_sharpe_ratio"]))
 
 
 def print_postgres_result(result):

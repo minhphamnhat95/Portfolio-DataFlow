@@ -129,6 +129,41 @@ GOLD_TABLE_CONFIGS = [
             "max_drawdown",
         ],
     },
+    {
+        "gold_folder_name": "optimized_portfolio_summary",
+        "schema_name": "gold",
+        "table_name": "optimized_portfolio_summary",
+        "qualified_table_name": "gold.optimized_portfolio_summary",
+        "columns": [
+            "portfolio_name",
+            "as_of_date",
+            "lookback_start_date",
+            "lookback_end_date",
+            "observation_count",
+            "risk_free_rate",
+            "annual_return",
+            "annual_volatility",
+            "sharpe_ratio",
+            "optimizer_method",
+            "constraint_set_name",
+            "optimization_success",
+            "optimization_message",
+        ],
+    },
+    {
+        "gold_folder_name": "optimized_portfolio_weights",
+        "schema_name": "gold",
+        "table_name": "optimized_portfolio_weights",
+        "qualified_table_name": "gold.optimized_portfolio_weights",
+        "columns": [
+            "portfolio_name",
+            "as_of_date",
+            "symbol",
+            "current_weight",
+            "optimized_weight",
+            "weight_difference",
+        ],
+    },
 ]
 
 
