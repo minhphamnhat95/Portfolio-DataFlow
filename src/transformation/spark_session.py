@@ -13,7 +13,7 @@ DEFAULT_SPARK_MASTER = "local[*]"
 def build_spark_session(
     app_name=DEFAULT_SPARK_APP_NAME,
     master=DEFAULT_SPARK_MASTER,
-    enable_ui=False,
+    enable_ui=True,
     ui_port=4040,
 ):
     builder = SparkSession.builder
