@@ -449,34 +449,42 @@ def build_portfolio_summary(portfolio_returns_df, risk_free_rate=RISK_FREE_RATE,
         "portfolio_value",
         spark_functions.col("cumulative_return") + spark_functions.lit(1.0),
     )
+    portfolio_value_df = portfolio_value_df.withColumn(
+        "summary_year",
+        spark_functions.year(spark_functions.col("price_date")),
+    )
 
-    drawdown_window = Window.partitionBy("portfolio_name").orderBy("price_date").rowsBetween(
+    ytd_window = Window.partitionBy("portfolio_name", "summary_year").orderBy("price_date").rowsBetween(
         Window.unboundedPreceding,
         Window.currentRow,
     )
     drawdown_df = portfolio_value_df.withColumn(
         "running_peak_value",
-        spark_functions.max("portfolio_value").over(drawdown_window),
+        spark_functions.max("portfolio_value").over(ytd_window),
     )
     drawdown_df = drawdown_df.withColumn(
         "drawdown",
         spark_functions.col("portfolio_value") / spark_functions.col("running_peak_value") - spark_functions.lit(1.0),
     )
 
-    return_stats_df = portfolio_returns_df.groupBy("portfolio_name").agg(
-        spark_functions.min("price_date").alias("start_date"),
-        spark_functions.max("price_date").alias("end_date"),
-        spark_functions.count("daily_return").alias("observation_count"),
-        spark_functions.avg("daily_return").alias("average_daily_return"),
-        spark_functions.stddev_samp("daily_return").alias("daily_volatility"),
+    return_stats_df = drawdown_df.withColumn(
+        "observation_count",
+        spark_functions.count("daily_return").over(ytd_window),
+    )
+    return_stats_df = return_stats_df.withColumn(
+        "average_daily_return",
+        spark_functions.avg("daily_return").over(ytd_window),
+    )
+    return_stats_df = return_stats_df.withColumn(
+        "daily_volatility",
+        spark_functions.stddev_samp("daily_return").over(ytd_window),
+    )
+    return_stats_df = return_stats_df.withColumn(
+        "max_drawdown",
+        spark_functions.min("drawdown").over(ytd_window),
     )
 
-    drawdown_stats_df = drawdown_df.groupBy("portfolio_name").agg(
-        spark_functions.min("drawdown").alias("max_drawdown")
-    )
-
-    summary_df = return_stats_df.join(drawdown_stats_df, "portfolio_name", "inner")
-    summary_df = summary_df.withColumn(
+    summary_df = return_stats_df.withColumn(
         "annual_return",
         spark_functions.col("average_daily_return") * spark_functions.lit(annualization_days),
     )
@@ -487,8 +495,11 @@ def build_portfolio_summary(portfolio_returns_df, risk_free_rate=RISK_FREE_RATE,
     summary_df = summary_df.withColumn("risk_free_rate", spark_functions.lit(risk_free_rate))
     summary_df = summary_df.withColumn(
         "sharpe_ratio",
-        (spark_functions.col("annual_return") - spark_functions.col("risk_free_rate"))
-        / spark_functions.col("annual_volatility"),
+        spark_functions.when(
+            spark_functions.col("annual_volatility") > spark_functions.lit(0.0),
+            (spark_functions.col("annual_return") - spark_functions.col("risk_free_rate"))
+            / spark_functions.col("annual_volatility"),
+        ).otherwise(None),
     )
 
     typed_df = apply_gold_portfolio_summary_schema(summary_df)

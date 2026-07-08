@@ -174,9 +174,9 @@ data/gold/portfolio_returns/
   portfolio_name, price_date, daily return, cumulative return
 
 data/gold/portfolio_summary/
-  One row per portfolio:
-  portfolio_name, start date, end date, observation count, annual return,
-  annual volatility, risk-free rate, Sharpe ratio, max drawdown
+  Per portfolio, per date:
+  year-to-date observation count, annual return, annual volatility,
+  risk-free rate, Sharpe ratio, and max drawdown
 
 data/gold/date_spine/
   Daily calendar dates from the first Silver price date to the latest Silver price date
@@ -192,7 +192,8 @@ data/gold/portfolio_returns_calendar/
   daily return, cumulative return, and fill-quality flags
 
 data/gold/portfolio_summary_calendar/
-  One row per portfolio using daily-calendar returns and 365-day annualization
+  Per portfolio, per calendar date:
+  year-to-date metrics using daily-calendar returns and 365-day annualization
 
 data/gold/optimized_portfolio_summary/
   One row for the historical max-Sharpe portfolio:
@@ -211,8 +212,9 @@ Metric notes:
 - `daily_return`: percentage change from the previous available AUD close price for the same asset.
 - `portfolio_returns.daily_return`: weighted sum of each asset's daily return using the fixed target weights.
 - `cumulative_return`: compounded portfolio return from the first available portfolio return date.
-- `annual_return`: average daily portfolio return multiplied by `252` trading days.
-- `annual_volatility`: daily return standard deviation multiplied by the square root of `252`.
+- `portfolio_summary`: one row per portfolio per date. Metrics are calculated from the beginning of that row's year through `price_date`.
+- `annual_return`: year-to-date average daily portfolio return multiplied by `252` trading days for strict summaries.
+- `annual_volatility`: year-to-date daily return standard deviation multiplied by the square root of `252`.
 - `sharpe_ratio`: `(annual_return - risk_free_rate) / annual_volatility`.
 - `max_drawdown`: largest percentage fall from a previous portfolio value peak.
 - Calendar-aware Gold tables keep strict actual-observation tables unchanged, but forward-fill missing prices and FX rates for dashboard-friendly daily timelines.
@@ -269,7 +271,7 @@ select count(*) from gold.asset_returns_calendar;
 select count(*) from gold.portfolio_returns;
 select count(*) from gold.portfolio_returns_calendar;
 select count(*) from gold.portfolio_summary;
-select * from gold.portfolio_summary_calendar;
+select * from gold.portfolio_summary_calendar order by price_date desc limit 10;
 select * from gold.optimized_portfolio_summary;
 select * from gold.optimized_portfolio_weights;
 select * from audit.load_logs order by started_at desc;

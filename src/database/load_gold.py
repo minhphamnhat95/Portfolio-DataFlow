@@ -102,8 +102,7 @@ GOLD_TABLE_CONFIGS = [
         "qualified_table_name": "gold.portfolio_summary",
         "columns": [
             "portfolio_name",
-            "start_date",
-            "end_date",
+            "price_date",
             "observation_count",
             "annual_return",
             "annual_volatility",
@@ -119,8 +118,7 @@ GOLD_TABLE_CONFIGS = [
         "qualified_table_name": "gold.portfolio_summary_calendar",
         "columns": [
             "portfolio_name",
-            "start_date",
-            "end_date",
+            "price_date",
             "observation_count",
             "annual_return",
             "annual_volatility",

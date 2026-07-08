@@ -216,8 +216,7 @@ def gold_portfolio_summary_schema():
     schema = StructType(
         [
             StructField("portfolio_name", StringType(), False),
-            StructField("start_date", DateType(), False),
-            StructField("end_date", DateType(), False),
+            StructField("price_date", DateType(), False),
             StructField("observation_count", LongType(), False),
             StructField("annual_return", DoubleType(), True),
             StructField("annual_volatility", DoubleType(), True),

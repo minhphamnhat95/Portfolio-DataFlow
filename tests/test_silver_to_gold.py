@@ -159,23 +159,68 @@ def test_build_portfolio_returns_and_summary_metrics(tmp_path, monkeypatch):
         portfolio_summary_df = silver_to_gold.build_portfolio_summary(portfolio_returns_df, 0.04)
 
         portfolio_rows = portfolio_returns_df.orderBy("price_date").collect()
-        summary_row = portfolio_summary_df.collect()[0]
+        summary_rows = portfolio_summary_df.orderBy("price_date").collect()
+        summary_row = summary_rows[1]
 
         monkeypatch.setattr(silver_to_gold, "GOLD_DIR", tmp_path / "gold")
         output_path = silver_to_gold.write_gold_table(portfolio_returns_df, "portfolio_returns")
         read_df = spark.read.parquet(str(output_path))
 
         assert len(portfolio_rows) == 2
+        assert len(summary_rows) == 2
         assert abs(portfolio_rows[0].daily_return - 0.15) < 0.000001
         assert abs(portfolio_rows[1].daily_return - -0.10) < 0.000001
         assert abs(portfolio_rows[1].cumulative_return - 0.035) < 0.000001
         assert summary_row.portfolio_name == "test_portfolio"
+        assert summary_row.price_date == date(2026, 1, 3)
         assert summary_row.observation_count == 2
         assert abs(summary_row.annual_return - 6.3) < 0.000001
         assert summary_row.annual_volatility > 0
         assert summary_row.sharpe_ratio > 0
         assert abs(summary_row.max_drawdown - -0.10) < 0.000001
         assert read_df.count() == 2
+    finally:
+        stop_spark_session(spark)
+
+
+def test_build_portfolio_summary_resets_metrics_at_start_of_year():
+    spark = build_spark_session("test-gold-portfolio-summary-ytd", "local[1]")
+
+    try:
+        portfolio_return_rows = [
+            {
+                "portfolio_name": "test_portfolio",
+                "price_date": date(2025, 12, 31),
+                "daily_return": 0.10,
+                "cumulative_return": 0.10,
+            },
+            {
+                "portfolio_name": "test_portfolio",
+                "price_date": date(2026, 1, 1),
+                "daily_return": 0.02,
+                "cumulative_return": 0.122,
+            },
+            {
+                "portfolio_name": "test_portfolio",
+                "price_date": date(2026, 1, 2),
+                "daily_return": 0.04,
+                "cumulative_return": 0.16688,
+            },
+        ]
+
+        portfolio_returns_df = spark.createDataFrame(portfolio_return_rows)
+        portfolio_summary_df = silver_to_gold.build_portfolio_summary(portfolio_returns_df, 0.04)
+        summary_rows = portfolio_summary_df.orderBy("price_date").collect()
+        jan_first_row = summary_rows[1]
+        jan_second_row = summary_rows[2]
+
+        assert len(summary_rows) == 3
+        assert jan_first_row.price_date == date(2026, 1, 1)
+        assert jan_first_row.observation_count == 1
+        assert abs(jan_first_row.annual_return - 5.04) < 0.000001
+        assert jan_second_row.price_date == date(2026, 1, 2)
+        assert jan_second_row.observation_count == 2
+        assert abs(jan_second_row.annual_return - 7.56) < 0.000001
     finally:
         stop_spark_session(spark)
 
@@ -438,6 +483,7 @@ def test_portfolio_returns_calendar_has_daily_rows_and_fill_flags():
         assert portfolio_rows[0].forward_filled_price_count == 1
         assert portfolio_rows[0].forward_filled_fx_count == 1
         assert summary_row.portfolio_name == "test_portfolio"
+        assert summary_row.price_date == date(2026, 1, 3)
         assert summary_row.observation_count == 1
         assert abs(summary_row.annual_return - 18.25) < 0.000001
     finally:

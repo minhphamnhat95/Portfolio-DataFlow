@@ -87,33 +87,39 @@ CREATE TABLE IF NOT EXISTS gold.portfolio_returns_calendar (
 );
 """
 
+DROP_GOLD_PORTFOLIO_SUMMARY_TABLE_SQL = """
+DROP TABLE IF EXISTS gold.portfolio_summary;
+"""
+
 CREATE_GOLD_PORTFOLIO_SUMMARY_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS gold.portfolio_summary (
     portfolio_name TEXT NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
+    price_date DATE NOT NULL,
     observation_count BIGINT NOT NULL,
     annual_return DOUBLE PRECISION,
     annual_volatility DOUBLE PRECISION,
     risk_free_rate DOUBLE PRECISION NOT NULL,
     sharpe_ratio DOUBLE PRECISION,
     max_drawdown DOUBLE PRECISION,
-    PRIMARY KEY (portfolio_name)
+    PRIMARY KEY (portfolio_name, price_date)
 );
+"""
+
+DROP_GOLD_PORTFOLIO_SUMMARY_CALENDAR_TABLE_SQL = """
+DROP TABLE IF EXISTS gold.portfolio_summary_calendar;
 """
 
 CREATE_GOLD_PORTFOLIO_SUMMARY_CALENDAR_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS gold.portfolio_summary_calendar (
     portfolio_name TEXT NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
+    price_date DATE NOT NULL,
     observation_count BIGINT NOT NULL,
     annual_return DOUBLE PRECISION,
     annual_volatility DOUBLE PRECISION,
     risk_free_rate DOUBLE PRECISION NOT NULL,
     sharpe_ratio DOUBLE PRECISION,
     max_drawdown DOUBLE PRECISION,
-    PRIMARY KEY (portfolio_name)
+    PRIMARY KEY (portfolio_name, price_date)
 );
 """
 
@@ -178,7 +184,9 @@ def get_table_statements():
     statements.append(CREATE_GOLD_ASSET_RETURNS_CALENDAR_TABLE_SQL)
     statements.append(CREATE_GOLD_PORTFOLIO_RETURNS_TABLE_SQL)
     statements.append(CREATE_GOLD_PORTFOLIO_RETURNS_CALENDAR_TABLE_SQL)
+    statements.append(DROP_GOLD_PORTFOLIO_SUMMARY_TABLE_SQL)
     statements.append(CREATE_GOLD_PORTFOLIO_SUMMARY_TABLE_SQL)
+    statements.append(DROP_GOLD_PORTFOLIO_SUMMARY_CALENDAR_TABLE_SQL)
     statements.append(CREATE_GOLD_PORTFOLIO_SUMMARY_CALENDAR_TABLE_SQL)
     statements.append(CREATE_GOLD_OPTIMIZED_PORTFOLIO_SUMMARY_TABLE_SQL)
     statements.append(CREATE_GOLD_OPTIMIZED_PORTFOLIO_WEIGHTS_TABLE_SQL)

@@ -61,7 +61,8 @@ def test_build_spark_session_applies_local_defaults(monkeypatch):
     assert builder.config_values["spark.sql.session.timeZone"] == "UTC"
     assert builder.config_values["spark.sql.shuffle.partitions"] == "4"
     assert builder.config_values["spark.driver.bindAddress"] == "127.0.0.1"
-    assert builder.config_values["spark.ui.enabled"] == "false"
+    assert builder.config_values["spark.ui.enabled"] == "true"
+    assert builder.config_values["spark.ui.port"] == "4040"
     assert builder.config_values["spark.local.dir"] == str(spark_local_dir)
     assert builder.config_values["spark.sql.warehouse.dir"] == spark_warehouse_dir.as_uri()
     assert "spark.pyspark.python" in builder.config_values
