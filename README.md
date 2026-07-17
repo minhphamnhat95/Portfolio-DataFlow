@@ -1,253 +1,186 @@
-# Financial Market Data Ingestion
+# Financial Market Data Platform
 
-Small local market data project that fetches ASX equity, crypto, and FX reference data, stores raw API payloads as local JSON files, validates the Bronze files, transforms them into Silver Parquet tables, and builds Gold portfolio metrics.
+A local batch data platform for market data ingestion, validation, transformation, portfolio analytics, and Power BI reporting.
+
+The project ingests ASX equities, crypto prices, and AUD/USD FX data, stores raw API responses as Bronze JSON, validates the raw files, transforms them with PySpark into Silver and Gold Parquet tables, loads dashboard-ready tables into PostgreSQL, and visualizes portfolio performance and allocation optimization in Power BI.
+
+## Project Goal
+
+The goal is to demonstrate an end-to-end data engineering and analytics workflow:
+
+- collect data from external APIs
+- preserve raw source data in a Bronze layer
+- validate file and row quality before transformation
+- use Spark to build structured Silver and Gold datasets
+- serve analytics tables from PostgreSQL
+- build a Power BI dashboard for portfolio analysis
+
+This is a portfolio project focused on data platform architecture. The portfolio optimizer is based on historical returns and is not intended to predict future investment performance.
+
+## Architecture
 
 ```mermaid
 flowchart LR
-  A[Yahoo Finance / Binance] --> B[Python ingestion clients]
-  B --> C[Local Bronze JSON files]
-  C --> D[Bronze validation]
-  D --> E[Spark Silver Parquet]
-  E --> F[Spark Gold portfolio metrics]
-  F --> G[PostgreSQL serving tables]
+  A[Yahoo Finance] --> C[Python Ingestion]
+  B[Binance API] --> C
+  C --> D[Bronze JSON]
+  D --> E[Bronze Validation]
+  E --> F[PySpark Silver Parquet]
+  F --> G[PySpark Gold Metrics]
+  G --> H[PostgreSQL Serving Layer]
+  H --> I[Power BI Dashboard]
 ```
 
-## Scope
+## Data Sources
 
-- Equities: `CBA.AX`, `BHP.AX`, `CSL.AX`, `WOW.AX`, `VAS.AX`
-- Crypto: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT`
-- FX reference: `AUDUSD=X`
-- Default backfill: `2018-01-01`
-- Current output: Bronze JSON, validation results, Silver Parquet, Gold portfolio metric Parquet, and PostgreSQL serving tables
+| Source | Assets | Purpose |
+| --- | --- | --- |
+| Yahoo Finance | `CBA.AX`, `BHP.AX`, `CSL.AX`, `WOW.AX`, `VAS.AX` | ASX equity price history |
+| Binance API | `BTCUSDT`, `ETHUSDT`, `SOLUSDT`, `BNBUSDT`, `XRPUSDT` | Crypto daily candles |
+| Yahoo Finance | `AUDUSD=X` | AUD conversion for USD/USDT assets |
 
-## Setup
+Key assumptions:
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+- USDT is treated as USD-equivalent for MVP reporting.
+- AUD assets are stored in AUD and do not require FX conversion.
+- Missing calendar dates are forward-filled only in calendar-aware Gold tables.
+- Optimized portfolio outputs use historical returns, not future forecasts.
 
-## Run
-
-Run the full local pipeline end to end:
-
-```powershell
-python -m src.pipeline.run_market_pipeline --start-date 2018-01-01 --spark-master local[1]
-```
-
-For local PostgreSQL loading, set your database password in the current PowerShell session first:
-
-```powershell
-$env:POSTGRES_PASSWORD="your_postgres_password"
-```
-
-Fetch data, store raw JSON files locally, and validate the Bronze files:
-
-```powershell
-python -m src.pipeline.run_daily --start-date 2018-01-01
-```
-
-Fetch a smaller date range:
-
-```powershell
-python -m src.pipeline.run_daily --start-date 2026-06-01 --end-date 2026-06-15
-```
-
-Outputs:
-
-- `data/bronze/...`: raw JSON payloads from Yahoo and Binance
-- `data/rejected/...`: invalid Bronze files moved only when quarantine is enabled
-
-Example folder layout:
+## Repository Structure
 
 ```text
-data/
-  bronze/
-    equities/
-      source=yahoo/
-        date=YYYY-MM-DD/
-          CBA.AX.json
-    crypto/
-      source=binance/
-        date=YYYY-MM-DD/
-          BTCUSDT.json
-          ETHUSDT.json
-          SOLUSDT.json
-          BNBUSDT.json
-          XRPUSDT.json
-    fx/
-      source=yahoo/
-        date=YYYY-MM-DD/
-          AUDUSD=X.json
+src/
+  ingestion/        API clients and Bronze JSON writing
+  validation/       Bronze file validation checks
+  transformation/   Spark Silver/Gold transformations and optimizer
+  database/         PostgreSQL schema creation and Gold table loading
+  pipeline/         End-to-end orchestration entry points
+  utils/            Shared configuration and logging helpers
+
+tests/              Unit and integration tests
+docs/               Supporting project documentation
+visual/             Architecture diagram source
+data/               Local generated Bronze/Silver/Gold data, gitignored
+logs/               Local pipeline logs, gitignored
 ```
 
-Run validation for an existing Bronze run date:
+## Data Layers
 
-```powershell
-python -m src.validation.validate_bronze --run-date 2026-06-16
-```
+### Bronze
 
-Quarantine invalid files only when you explicitly want to move them:
-
-```powershell
-python -m src.pipeline.run_daily --start-date 2026-06-01 --quarantine-invalid
-```
-
-The default validation rule fails the command if more than `25%` of expected Bronze files are invalid.
-
-## Tests
-
-```powershell
-python -m pytest
-```
-
-## Spark
-
-The reusable Spark session helper is:
+Bronze stores raw API payloads exactly as received.
 
 ```text
-src/transformation/spark_session.py
+data/bronze/equities/source=yahoo/date=YYYY-MM-DD/{symbol}.json
+data/bronze/crypto/source=binance/date=YYYY-MM-DD/{symbol}.json
+data/bronze/fx/source=yahoo/date=YYYY-MM-DD/AUDUSD=X.json
 ```
 
-Quick smoke test:
+The Bronze layer is intentionally raw so the project keeps a reproducible copy of the source responses.
 
-```powershell
-python -c "from src.transformation.spark_session import build_spark_session, stop_spark_session; spark = build_spark_session('spark-smoke-test', 'local[1]'); print(spark.range(1).count()); stop_spark_session(spark)"
-```
+### Validation
 
-## Silver Transformation
+Bronze validation checks for common data quality problems before Spark transformations run.
 
-Transform Bronze JSON files into Silver Parquet tables:
+Examples:
 
-```powershell
-python -m src.transformation.bronze_to_silver --run-date 2026-06-16 --master local[1]
-```
+- missing expected files
+- empty files
+- invalid JSON
+- missing records
+- missing timestamps
+- negative price or volume values
+- duplicate dates
 
-This currently handles:
+Invalid files can be reported or quarantined into `data/rejected/`. The default policy fails the pipeline if more than 25% of expected Bronze files are invalid.
+
+### Silver
+
+Silver converts raw JSON into clean, structured Parquet tables.
 
 ```text
-Config asset list
-  -> symbol/asset_class/source/currency metadata
-  -> data/silver/assets/
-
-Bronze Yahoo equities JSON
-  -> Date/Open/High/Low/Close/Volume
-  -> data/silver/asset_prices/
-
-Bronze Binance crypto JSON
-  -> open_time/open/high/low/close/volume
-  -> data/silver/asset_prices/
-
-Bronze Yahoo FX JSON
-  -> Date/Close
-  -> data/silver/fx_rates/
+data/silver/assets/
+data/silver/asset_prices/
+data/silver/fx_rates/
 ```
 
-## Gold Portfolio Metrics
+Main meaning:
 
-Transform Silver Parquet tables into Gold portfolio metrics:
+- `assets`: asset metadata such as symbol, asset class, source, and currency
+- `asset_prices`: normalized daily OHLCV price history
+- `fx_rates`: normalized AUD/USD FX reference rates
 
-```powershell
-python -m src.transformation.silver_to_gold --master local[1]
-```
+### Gold
 
-Current fixed demo portfolio:
-
-```text
-40% VAS.AX
-25% CBA.AX
-15% BHP.AX
-10% BTCUSDT
-10% ETHUSDT
-```
-
-Current Gold outputs:
+Gold contains analytics-ready metrics used by PostgreSQL and Power BI.
 
 ```text
 data/gold/asset_returns/
-  Per asset, per date:
-  symbol, asset_class, source, price_date, native close price, AUD close price, currency, daily return
-
-data/gold/portfolio_returns/
-  Per portfolio, per date:
-  portfolio_name, price_date, daily return, cumulative return
-
-data/gold/portfolio_summary/
-  Per portfolio, per date:
-  year-to-date observation count, annual return, annual volatility,
-  risk-free rate, Sharpe ratio, and max drawdown
-
 data/gold/date_spine/
-  Daily calendar dates from the first Silver price date to the latest Silver price date
-
 data/gold/asset_returns_calendar/
-  Per asset, per calendar day:
-  filled native close price, filled AUD close price, daily return,
-  observed/forward-filled price flags, observed/forward-filled FX flags,
-  source price date, source FX date
-
+data/gold/portfolio_returns/
 data/gold/portfolio_returns_calendar/
-  Per portfolio, per calendar day:
-  daily return, cumulative return, and fill-quality flags
-
+data/gold/portfolio_summary/
 data/gold/portfolio_summary_calendar/
-  Per portfolio, per calendar date:
-  year-to-date metrics using daily-calendar returns and 365-day annualization
-
 data/gold/optimized_portfolio_summary/
-  One row for the historical max-Sharpe portfolio:
-  portfolio name, lookback period, observation count, risk-free rate,
-  annual return, annual volatility, Sharpe ratio, optimizer method,
-  constraint set, and optimizer status
-
 data/gold/optimized_portfolio_weights/
-  Per optimized portfolio, per asset:
-  current weight, optimized weight, and weight difference
 ```
 
-Metric notes:
+Important Gold outputs:
 
-- `close_price_aud`: AUD assets stay unchanged. USDT crypto prices are divided by `AUDUSD=X`, treating USDT as USD-equivalent.
-- `daily_return`: percentage change from the previous available AUD close price for the same asset.
-- `portfolio_returns.daily_return`: weighted sum of each asset's daily return using the fixed target weights.
-- `cumulative_return`: compounded portfolio return from the first available portfolio return date.
-- `portfolio_summary`: one row per portfolio per date. Metrics are calculated from the beginning of that row's year through `price_date`.
-- `annual_return`: year-to-date average daily portfolio return multiplied by `252` trading days for strict summaries.
-- `annual_volatility`: year-to-date daily return standard deviation multiplied by the square root of `252`.
-- `sharpe_ratio`: `(annual_return - risk_free_rate) / annual_volatility`.
-- `max_drawdown`: largest percentage fall from a previous portfolio value peak.
-- Calendar-aware Gold tables keep strict actual-observation tables unchanged, but forward-fill missing prices and FX rates for dashboard-friendly daily timelines.
-- Calendar-aware summary metrics use `365` days for annualization because those rows use calendar days, including weekends.
-- Optimized portfolio outputs use SciPy SLSQP to maximize historical Sharpe ratio from `asset_returns_calendar`; this is historical allocation analysis, not a future prediction model.
+- `asset_returns_calendar`: daily calendar asset returns with observed and forward-filled flags
+- `portfolio_returns_calendar`: fixed portfolio daily returns and cumulative returns
+- `portfolio_summary_calendar`: year-to-date portfolio KPIs by date
+- `optimized_portfolio_summary`: historical max-Sharpe portfolio summary
+- `optimized_portfolio_weights`: current weights, optimized weights, and suggested weight differences
 
-Run only the portfolio optimizer:
+## Portfolio Logic
 
-```powershell
-python -m src.transformation.portfolio_optimizer --master local[1]
+The fixed demo portfolio is:
+
+| Symbol | Weight |
+| --- | ---: |
+| `VAS.AX` | 40% |
+| `CBA.AX` | 25% |
+| `BHP.AX` | 15% |
+| `BTCUSDT` | 10% |
+| `ETHUSDT` | 10% |
+
+Portfolio metrics include:
+
+- daily return
+- cumulative return
+- annualized return
+- annualized volatility
+- Sharpe ratio
+- max drawdown
+
+Calendar-aware tables use 365 days for annualization. Strict actual-observation tables use 252 trading days.
+
+## Optimizer
+
+The optimizer uses `scipy.optimize.minimize` with SLSQP to maximize historical Sharpe ratio from `asset_returns_calendar`.
+
+MVP constraints:
+
+- weights must sum to 100%
+- no short selling
+- max 60% in one asset
+- max 25% total crypto allocation
+- max 15% in one crypto asset
+
+The optimizer writes two dashboard-ready Gold outputs:
+
+```text
+gold.optimized_portfolio_summary
+gold.optimized_portfolio_weights
 ```
 
 ## PostgreSQL Serving Layer
 
-Create PostgreSQL schemas and tables:
+Gold Parquet outputs are loaded into PostgreSQL tables for Power BI.
 
-```powershell
-python -m src.database.schema
-```
-
-Preview Gold Parquet row counts before loading:
-
-```powershell
-python -m src.database.load_gold --dry-run
-```
-
-Load Gold Parquet tables into PostgreSQL:
-
-```powershell
-python -m src.database.load_gold
-```
-
-Current PostgreSQL tables:
+Current serving tables:
 
 ```text
 gold.asset_returns
@@ -262,23 +195,196 @@ gold.optimized_portfolio_weights
 audit.load_logs
 ```
 
-Useful checks:
+The MVP load mode is truncate-and-reload.
+
+## Power BI Dashboard
+
+The Power BI report is designed around three pages.
+
+### 1. Portfolio Overview
+
+Shows the fixed portfolio performance over time.
+
+Main visuals:
+
+- daily return card
+- Sharpe ratio card
+- annual return card
+- annual volatility card
+- cumulative return over time
+- daily return over time
+
+### 2. Asset Performance
+
+Shows individual asset price and return behaviour.
+
+Main visuals:
+
+- closing price card
+- daily return card
+- closing price over time
+- daily return by date
+- latest asset price table
+
+Useful data quality fields:
+
+- `is_price_observed`
+- `is_price_forward_filled`
+- `is_fx_observed`
+- `is_fx_forward_filled`
+
+### 3. Portfolio Optimizer
+
+Compares the current fixed portfolio with the optimized historical max-Sharpe allocation.
+
+Main visuals:
+
+- optimized annual return
+- optimized annual volatility
+- optimized Sharpe ratio
+- current weight by symbol
+- optimized weight by symbol
+- weight difference by symbol
+- allocation action table
+
+## Setup
+
+Create and activate a virtual environment:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Set PostgreSQL connection values in the current PowerShell session:
+
+```powershell
+$env:POSTGRES_HOST="127.0.0.1"
+$env:POSTGRES_PORT="5432"
+$env:POSTGRES_DATABASE="finance_data_market"
+$env:POSTGRES_USER="postgres"
+$env:POSTGRES_PASSWORD="your_postgres_password"
+```
+
+The default PostgreSQL values are also defined in `src/utils/config.py`.
+
+## Run The Pipeline
+
+Run the full local pipeline:
+
+```powershell
+python -m src.pipeline.run_market_pipeline --start-date 2026-01-01 --spark-master local[1]
+```
+
+This runs:
+
+1. Bronze ingestion and validation
+2. Bronze to Silver Spark transformation
+3. Silver to Gold Spark transformation and optimizer
+4. Gold Parquet to PostgreSQL load
+
+Run without loading PostgreSQL:
+
+```powershell
+python -m src.pipeline.run_market_pipeline --start-date 2026-01-01 --spark-master local[1] --skip-postgres
+```
+
+Run only ingestion and validation:
+
+```powershell
+python -m src.pipeline.run_daily --start-date 2026-01-01
+```
+
+Run only Bronze to Silver:
+
+```powershell
+python -m src.transformation.bronze_to_silver --run-date 2026-07-18 --master local[1]
+```
+
+Run only Silver to Gold:
+
+```powershell
+python -m src.transformation.silver_to_gold --master local[1]
+```
+
+Run only the optimizer:
+
+```powershell
+python -m src.transformation.portfolio_optimizer --master local[1]
+```
+
+Preview PostgreSQL load row counts:
+
+```powershell
+python -m src.database.load_gold --dry-run
+```
+
+Load Gold tables into PostgreSQL:
+
+```powershell
+python -m src.database.load_gold
+```
+
+## Useful SQL Checks
 
 ```sql
-select count(*) from gold.asset_returns;
-select count(*) from gold.date_spine;
 select count(*) from gold.asset_returns_calendar;
-select count(*) from gold.portfolio_returns;
 select count(*) from gold.portfolio_returns_calendar;
-select count(*) from gold.portfolio_summary;
 select * from gold.portfolio_summary_calendar order by price_date desc limit 10;
 select * from gold.optimized_portfolio_summary;
-select * from gold.optimized_portfolio_weights;
+select * from gold.optimized_portfolio_weights order by weight_difference desc;
 select * from audit.load_logs order by started_at desc;
 ```
 
-## Future Enhancements
+## Tests
 
-- Contribution planner for adding new money to the portfolio
+Run the test suite:
+
+```powershell
+python -m pytest
+```
+
+Test coverage includes:
+
+- Yahoo response normalization
+- Binance response normalization
+- Bronze validation rules
+- Spark session creation
+- Bronze to Silver transformations
+- Silver to Gold metrics
+- portfolio optimizer constraints
+- pipeline orchestration behaviour
+
+## Configuration
+
+Main configuration lives in:
+
+```text
+src/utils/config.py
+```
+
+This includes:
+
+- asset symbols
+- default start date
+- data folder paths
+- validation failure threshold
+- annualization settings
+- risk-free rate
+- fixed portfolio weights
+- default PostgreSQL connection values
+
+## Notes For Reviewers
+
+This project is intentionally local-first. It prioritizes a clear data engineering workflow over production infrastructure.
+
+Production-oriented extensions would include:
+
+- Dockerized PostgreSQL and Spark runtime
 - Airflow orchestration
-- dbt models and tests
+- dbt models and tests for the serving layer
+- incremental loading instead of truncate-and-reload
+- richer data quality reporting
+- contribution planner for new investment amounts
+- future ML or forecasting layer
