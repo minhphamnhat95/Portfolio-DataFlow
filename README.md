@@ -1,6 +1,6 @@
-# Financial Market Data Platform
+# PortfolioFlow
 
-A local batch data platform for market data ingestion, validation, transformation, portfolio analytics, and Power BI reporting.
+A Market Data Pipeline for Portfolio Analytics and Optimization
 
 The project ingests ASX equities, crypto prices, and AUD/USD FX data, stores raw API responses as Bronze JSON, validates the raw files, transforms them with PySpark into Silver and Gold Parquet tables, loads dashboard-ready tables into PostgreSQL, and visualizes portfolio performance and allocation optimization in Power BI.
 
