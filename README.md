@@ -204,7 +204,7 @@ The Power BI report is designed around three pages.
 ### 1. Portfolio Overview
 
 Shows the fixed portfolio performance over time.
-
+![alt text](P1.png)
 Main visuals:
 
 - daily return card
@@ -217,7 +217,7 @@ Main visuals:
 ### 2. Asset Performance
 
 Shows individual asset price and return behaviour.
-
+![alt text](P2.png)
 Main visuals:
 
 - closing price card
@@ -236,7 +236,7 @@ Useful data quality fields:
 ### 3. Portfolio Optimizer
 
 Compares the current fixed portfolio with the optimized historical max-Sharpe allocation.
-
+![alt text](P3.png)
 Main visuals:
 
 - optimized annual return
