@@ -66,9 +66,12 @@ def test_run_market_pipeline_calls_steps_in_order(monkeypatch):
         assert mode == "overwrite"
 
         result = {
-            "asset_returns_row_count": 100,
-            "portfolio_returns_row_count": 10,
-            "portfolio_summary_row_count": 1,
+            "dim_date_row_count": 100,
+            "dim_asset_row_count": 10,
+            "dim_portfolio_row_count": 2,
+            "fact_asset_daily_row_count": 100,
+            "fact_portfolio_daily_row_count": 10,
+            "fact_portfolio_summary_daily_row_count": 1,
         }
 
         return result
@@ -79,8 +82,8 @@ def test_run_market_pipeline_calls_steps_in_order(monkeypatch):
         assert mode == "overwrite"
 
         result = {
-            "optimized_portfolio_summary_row_count": 1,
-            "optimized_portfolio_weights_row_count": 5,
+            "fact_optimizer_summary_row_count": 1,
+            "fact_optimizer_weights_row_count": 5,
             "optimized_sharpe_ratio": 0.50,
         }
 
@@ -96,7 +99,7 @@ def test_run_market_pipeline_calls_steps_in_order(monkeypatch):
             "run_id": "load_test",
             "results": [
                 {
-                    "table_name": "gold.portfolio_summary",
+                    "table_name": "gold.fact_portfolio_summary_daily",
                     "status": "success",
                     "row_count": 1,
                 }
@@ -129,8 +132,8 @@ def test_run_market_pipeline_calls_steps_in_order(monkeypatch):
     assert calls == ["ingestion", "spark_start", "silver", "gold", "optimizer", "spark_stop", "postgres"]
     assert result["ingestion"]["run_id"] == "run_test"
     assert result["silver"]["asset_prices_row_count"] == 100
-    assert result["gold"]["portfolio_summary_row_count"] == 1
-    assert result["optimizer"]["optimized_portfolio_weights_row_count"] == 5
+    assert result["gold"]["fact_portfolio_summary_daily_row_count"] == 1
+    assert result["optimizer"]["fact_optimizer_weights_row_count"] == 5
     assert result["postgres"]["run_id"] == "load_test"
 
 

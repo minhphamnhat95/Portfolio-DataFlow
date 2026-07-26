@@ -125,14 +125,17 @@ def print_silver_result(result):
 
 
 def print_gold_result(result):
-    print("Gold asset return rows: " + str(result["asset_returns_row_count"]))
-    print("Gold portfolio return rows: " + str(result["portfolio_returns_row_count"]))
-    print("Gold portfolio summary rows: " + str(result["portfolio_summary_row_count"]))
+    print("Gold dim_date rows: " + str(result["dim_date_row_count"]))
+    print("Gold dim_asset rows: " + str(result["dim_asset_row_count"]))
+    print("Gold dim_portfolio rows: " + str(result["dim_portfolio_row_count"]))
+    print("Gold fact_asset_daily rows: " + str(result["fact_asset_daily_row_count"]))
+    print("Gold fact_portfolio_daily rows: " + str(result["fact_portfolio_daily_row_count"]))
+    print("Gold fact_portfolio_summary_daily rows: " + str(result["fact_portfolio_summary_daily_row_count"]))
 
 
 def print_optimizer_result(result):
-    print("Gold optimized portfolio summary rows: " + str(result["optimized_portfolio_summary_row_count"]))
-    print("Gold optimized portfolio weights rows: " + str(result["optimized_portfolio_weights_row_count"]))
+    print("Gold fact_optimizer_summary rows: " + str(result["fact_optimizer_summary_row_count"]))
+    print("Gold fact_optimizer_weights rows: " + str(result["fact_optimizer_weights_row_count"]))
     print("Gold optimized Sharpe ratio: " + str(result["optimized_sharpe_ratio"]))
 
 

@@ -119,43 +119,59 @@ def fx_rate_schema():
     return schema
 
 
-def gold_asset_return_schema():
+def gold_dim_date_schema():
     schema = StructType(
         [
-            StructField("symbol", StringType(), False),
-            StructField("asset_class", StringType(), False),
-            StructField("source", StringType(), False),
-            StructField("price_date", DateType(), False),
-            StructField("close_price_native", DoubleType(), False),
-            StructField("close_price_aud", DoubleType(), False),
-            StructField("currency", StringType(), False),
-            StructField("daily_return", DoubleType(), True),
+            StructField("date_key", DateType(), False),
+            StructField("calendar_year", LongType(), False),
+            StructField("calendar_quarter", LongType(), False),
+            StructField("calendar_month", LongType(), False),
+            StructField("month_name", StringType(), False),
+            StructField("day_of_month", LongType(), False),
+            StructField("day_of_week", LongType(), False),
+            StructField("day_name", StringType(), False),
+            StructField("is_weekend", BooleanType(), False),
         ]
     )
 
     return schema
 
 
-def gold_date_spine_schema():
+def gold_dim_asset_schema():
     schema = StructType(
         [
-            StructField("calendar_date", DateType(), False),
+            StructField("symbol", StringType(), False),
+            StructField("asset_class", StringType(), False),
+            StructField("source", StringType(), False),
+            StructField("currency", StringType(), False),
+            StructField("description", StringType(), True),
+            StructField("is_active", BooleanType(), False),
         ]
     )
 
     return schema
 
 
-def gold_asset_return_calendar_schema():
+def gold_dim_portfolio_schema():
+    schema = StructType(
+        [
+            StructField("portfolio_name", StringType(), False),
+            StructField("portfolio_type", StringType(), False),
+            StructField("description", StringType(), True),
+            StructField("is_active", BooleanType(), False),
+        ]
+    )
+
+    return schema
+
+
+def gold_fact_asset_daily_schema():
     schema = StructType(
         [
             StructField("symbol", StringType(), False),
-            StructField("asset_class", StringType(), False),
-            StructField("source", StringType(), False),
-            StructField("price_date", DateType(), False),
+            StructField("date_key", DateType(), False),
             StructField("close_price_native", DoubleType(), False),
             StructField("close_price_aud", DoubleType(), False),
-            StructField("currency", StringType(), False),
             StructField("daily_return", DoubleType(), True),
             StructField("is_price_observed", BooleanType(), False),
             StructField("is_price_forward_filled", BooleanType(), False),
@@ -181,24 +197,11 @@ def portfolio_weight_schema():
     return schema
 
 
-def gold_portfolio_return_schema():
+def gold_fact_portfolio_daily_schema():
     schema = StructType(
         [
             StructField("portfolio_name", StringType(), False),
-            StructField("price_date", DateType(), False),
-            StructField("daily_return", DoubleType(), False),
-            StructField("cumulative_return", DoubleType(), False),
-        ]
-    )
-
-    return schema
-
-
-def gold_portfolio_return_calendar_schema():
-    schema = StructType(
-        [
-            StructField("portfolio_name", StringType(), False),
-            StructField("price_date", DateType(), False),
+            StructField("date_key", DateType(), False),
             StructField("daily_return", DoubleType(), False),
             StructField("cumulative_return", DoubleType(), False),
             StructField("has_forward_filled_price", BooleanType(), False),
@@ -212,12 +215,13 @@ def gold_portfolio_return_calendar_schema():
     return schema
 
 
-def gold_portfolio_summary_schema():
+def gold_fact_portfolio_summary_daily_schema():
     schema = StructType(
         [
             StructField("portfolio_name", StringType(), False),
-            StructField("price_date", DateType(), False),
+            StructField("date_key", DateType(), False),
             StructField("observation_count", LongType(), False),
+            StructField("ytd_return", DoubleType(), True),
             StructField("annual_return", DoubleType(), True),
             StructField("annual_volatility", DoubleType(), True),
             StructField("risk_free_rate", DoubleType(), False),
@@ -229,7 +233,7 @@ def gold_portfolio_summary_schema():
     return schema
 
 
-def gold_optimized_portfolio_summary_schema():
+def gold_fact_optimizer_summary_schema():
     schema = StructType(
         [
             StructField("portfolio_name", StringType(), False),
@@ -251,7 +255,7 @@ def gold_optimized_portfolio_summary_schema():
     return schema
 
 
-def gold_optimized_portfolio_weight_schema():
+def gold_fact_optimizer_weight_schema():
     schema = StructType(
         [
             StructField("portfolio_name", StringType(), False),

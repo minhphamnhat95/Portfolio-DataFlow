@@ -30,14 +30,14 @@ def build_optimizer_test_return_matrix(spark):
 
         for symbol in symbols:
             row = {
-                "price_date": price_date,
+                "date_key": price_date,
                 "symbol": symbol,
                 "daily_return": returns_by_symbol[symbol][date_index],
             }
             rows.append(row)
 
-    asset_returns_calendar_df = spark.createDataFrame(rows)
-    return_matrix_df = portfolio_optimizer.build_return_matrix(asset_returns_calendar_df, symbols)
+    fact_asset_daily_df = spark.createDataFrame(rows)
+    return_matrix_df = portfolio_optimizer.build_return_matrix(fact_asset_daily_df, symbols)
 
     result = {
         "symbols": symbols,
@@ -53,47 +53,47 @@ def test_build_return_matrix_pivots_symbols_into_columns_and_keeps_complete_date
     try:
         asset_return_rows = [
             {
-                "price_date": date(2026, 1, 1),
+                "date_key": date(2026, 1, 1),
                 "symbol": "CBA.AX",
                 "daily_return": None,
             },
             {
-                "price_date": date(2026, 1, 1),
+                "date_key": date(2026, 1, 1),
                 "symbol": "BTCUSDT",
                 "daily_return": None,
             },
             {
-                "price_date": date(2026, 1, 2),
+                "date_key": date(2026, 1, 2),
                 "symbol": "CBA.AX",
                 "daily_return": 0.01,
             },
             {
-                "price_date": date(2026, 1, 2),
+                "date_key": date(2026, 1, 2),
                 "symbol": "BTCUSDT",
                 "daily_return": 0.02,
             },
             {
-                "price_date": date(2026, 1, 3),
+                "date_key": date(2026, 1, 3),
                 "symbol": "CBA.AX",
                 "daily_return": 0.03,
             },
             {
-                "price_date": date(2026, 1, 3),
+                "date_key": date(2026, 1, 3),
                 "symbol": "ETHUSDT",
                 "daily_return": 0.50,
             },
         ]
 
-        asset_returns_calendar_df = spark.createDataFrame(asset_return_rows)
+        fact_asset_daily_df = spark.createDataFrame(asset_return_rows)
         symbols = ["CBA.AX", "BTCUSDT"]
 
-        return_matrix_df = portfolio_optimizer.build_return_matrix(asset_returns_calendar_df, symbols)
+        return_matrix_df = portfolio_optimizer.build_return_matrix(fact_asset_daily_df, symbols)
         rows = return_matrix_df.collect()
         row = rows[0].asDict()
 
-        assert return_matrix_df.columns == ["price_date", "CBA.AX", "BTCUSDT"]
+        assert return_matrix_df.columns == ["date_key", "CBA.AX", "BTCUSDT"]
         assert len(rows) == 1
-        assert row["price_date"] == date(2026, 1, 2)
+        assert row["date_key"] == date(2026, 1, 2)
         assert abs(row["CBA.AX"] - 0.01) < 0.000001
         assert abs(row["BTCUSDT"] - 0.02) < 0.000001
     finally:
@@ -199,11 +199,11 @@ def test_optimize_return_matrix_to_gold_writes_summary_and_weights(tmp_path, mon
             0.04,
         )
 
-        summary_path = tmp_path / "optimized_portfolio_summary"
-        weights_path = tmp_path / "optimized_portfolio_weights"
+        summary_path = tmp_path / "fact_optimizer_summary"
+        weights_path = tmp_path / "fact_optimizer_weights"
 
-        assert result["optimized_portfolio_summary_row_count"] == 1
-        assert result["optimized_portfolio_weights_row_count"] == 5
+        assert result["fact_optimizer_summary_row_count"] == 1
+        assert result["fact_optimizer_weights_row_count"] == 5
         assert summary_path.exists()
         assert weights_path.exists()
     finally:

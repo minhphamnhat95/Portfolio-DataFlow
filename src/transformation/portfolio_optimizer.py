@@ -17,32 +17,33 @@ if __package__ is None or __package__ == "":
     sys.path.append(str(project_root))
 
 from src.transformation.schemas import (
-    gold_optimized_portfolio_summary_schema,
-    gold_optimized_portfolio_weight_schema,
+    gold_fact_optimizer_summary_schema,
+    gold_fact_optimizer_weight_schema,
 )
 from src.transformation.spark_session import build_spark_session, stop_spark_session
 from src.utils.config import (
     CALENDAR_DAYS_PER_YEAR,
     FIXED_PORTFOLIO_WEIGHTS,
     GOLD_DIR,
+    OPTIMIZED_PORTFOLIO_NAME,
     RISK_FREE_RATE,
 )
 
 
 OPTIMIZER_METHOD = "scipy_slsqp_max_sharpe"
 CONSTRAINT_SET_NAME = "personal_mvp"
-DEFAULT_OPTIMIZED_PORTFOLIO_NAME = "max_sharpe_calendar"
+DEFAULT_OPTIMIZED_PORTFOLIO_NAME = OPTIMIZED_PORTFOLIO_NAME
 MAX_SINGLE_ASSET_WEIGHT = 0.60
 MAX_CRYPTO_TOTAL_WEIGHT = 0.25
 MAX_CRYPTO_ASSET_WEIGHT = 0.15
 WEIGHT_TOLERANCE = 0.000001
 
 
-def read_gold_asset_returns_calendar(spark):
-    path = GOLD_DIR / "asset_returns_calendar"
-    asset_returns_calendar_df = spark.read.parquet(str(path))
+def read_gold_fact_asset_daily(spark):
+    path = GOLD_DIR / "fact_asset_daily"
+    fact_asset_daily_df = spark.read.parquet(str(path))
 
-    return asset_returns_calendar_df
+    return fact_asset_daily_df
 
 
 def get_default_optimizer_symbols():
@@ -84,11 +85,11 @@ def validate_return_matrix_symbols(symbols):
         raise ValueError("At least one symbol is required to build the return matrix.")
 
 
-def build_return_matrix(asset_returns_calendar_df, symbols, start_date=None, end_date=None):
+def build_return_matrix(fact_asset_daily_df, symbols, start_date=None, end_date=None):
     validate_return_matrix_symbols(symbols)
 
-    selected_df = asset_returns_calendar_df.select(
-        spark_functions.col("price_date"),
+    selected_df = fact_asset_daily_df.select(
+        spark_functions.col("date_key"),
         spark_functions.col("symbol"),
         spark_functions.col("daily_return"),
     )
@@ -98,17 +99,17 @@ def build_return_matrix(asset_returns_calendar_df, symbols, start_date=None, end
 
     if start_date is not None:
         selected_df = selected_df.filter(
-            spark_functions.col("price_date") >= spark_functions.lit(start_date).cast("date")
+            spark_functions.col("date_key") >= spark_functions.lit(start_date).cast("date")
         )
 
     if end_date is not None:
         selected_df = selected_df.filter(
-            spark_functions.col("price_date") <= spark_functions.lit(end_date).cast("date")
+            spark_functions.col("date_key") <= spark_functions.lit(end_date).cast("date")
         )
 
     selected_df = selected_df.filter(spark_functions.col("daily_return").isNotNull())
 
-    matrix_df = selected_df.groupBy("price_date").pivot("symbol", symbols).agg(
+    matrix_df = selected_df.groupBy("date_key").pivot("symbol", symbols).agg(
         spark_functions.first("daily_return", True)
     )
 
@@ -119,7 +120,7 @@ def build_return_matrix(asset_returns_calendar_df, symbols, start_date=None, end
         complete_matrix_df = complete_matrix_df.filter(symbol_column.isNotNull())
 
     selected_columns = []
-    selected_columns.append(spark_functions.col("price_date"))
+    selected_columns.append(spark_functions.col("date_key"))
 
     for symbol in symbols:
         symbol_column = build_symbol_column(symbol)
@@ -127,7 +128,7 @@ def build_return_matrix(asset_returns_calendar_df, symbols, start_date=None, end
         selected_columns.append(selected_column)
 
     return_matrix_df = complete_matrix_df.select(selected_columns)
-    return_matrix_df = return_matrix_df.orderBy("price_date")
+    return_matrix_df = return_matrix_df.orderBy("date_key")
 
     return return_matrix_df
 
@@ -303,8 +304,8 @@ def build_optimizer_inputs(return_matrix_df, symbols, annualization_days=CALENDA
     annual_returns = daily_mean_returns * annualization_days
     annual_covariance_matrix = daily_covariance_matrix * annualization_days
 
-    lookback_start_date = return_matrix_pandas["price_date"].min()
-    lookback_end_date = return_matrix_pandas["price_date"].max()
+    lookback_start_date = return_matrix_pandas["date_key"].min()
+    lookback_end_date = return_matrix_pandas["date_key"].max()
     lookback_start_date = normalize_date_value(lookback_start_date)
     lookback_end_date = normalize_date_value(lookback_end_date)
 
@@ -623,23 +624,23 @@ def optimize_return_matrix_to_gold(
     summary_result = write_optimizer_table(
         spark,
         output_rows["summary_rows"],
-        gold_optimized_portfolio_summary_schema(),
-        "optimized_portfolio_summary",
+        gold_fact_optimizer_summary_schema(),
+        "fact_optimizer_summary",
         mode,
     )
     weights_result = write_optimizer_table(
         spark,
         output_rows["weight_rows"],
-        gold_optimized_portfolio_weight_schema(),
-        "optimized_portfolio_weights",
+        gold_fact_optimizer_weight_schema(),
+        "fact_optimizer_weights",
         mode,
     )
 
     result = {
-        "optimized_portfolio_summary_row_count": summary_result["row_count"],
-        "optimized_portfolio_summary_output_path": summary_result["output_path"],
-        "optimized_portfolio_weights_row_count": weights_result["row_count"],
-        "optimized_portfolio_weights_output_path": weights_result["output_path"],
+        "fact_optimizer_summary_row_count": summary_result["row_count"],
+        "fact_optimizer_summary_output_path": summary_result["output_path"],
+        "fact_optimizer_weights_row_count": weights_result["row_count"],
+        "fact_optimizer_weights_output_path": weights_result["output_path"],
         "optimization_success": optimizer_result["success"],
         "optimization_message": optimizer_result["message"],
         "optimized_sharpe_ratio": optimizer_result["sharpe_ratio"],
@@ -659,8 +660,8 @@ def optimize_portfolio_from_gold(
     if symbols is None:
         symbols = get_default_optimizer_symbols()
 
-    asset_returns_calendar_df = read_gold_asset_returns_calendar(spark)
-    return_matrix_df = build_return_matrix(asset_returns_calendar_df, symbols, start_date, end_date)
+    fact_asset_daily_df = read_gold_fact_asset_daily(spark)
+    return_matrix_df = build_return_matrix(fact_asset_daily_df, symbols, start_date, end_date)
 
     result = optimize_return_matrix_to_gold(
         spark,
@@ -721,15 +722,15 @@ def parse_args():
 def print_optimizer_result(result):
     print(
         "Wrote "
-        + str(result["optimized_portfolio_summary_row_count"])
+        + str(result["fact_optimizer_summary_row_count"])
         + " rows to "
-        + result["optimized_portfolio_summary_output_path"]
+        + result["fact_optimizer_summary_output_path"]
     )
     print(
         "Wrote "
-        + str(result["optimized_portfolio_weights_row_count"])
+        + str(result["fact_optimizer_weights_row_count"])
         + " rows to "
-        + result["optimized_portfolio_weights_output_path"]
+        + result["fact_optimizer_weights_output_path"]
     )
     print("Optimization success: " + str(result["optimization_success"]))
     print("Optimization message: " + str(result["optimization_message"]))
@@ -741,14 +742,14 @@ def main():
     spark = build_spark_session("portfolio-max-sharpe-optimizer", args.master)
 
     try:
-        asset_returns_calendar_df = read_gold_asset_returns_calendar(spark)
+        fact_asset_daily_df = read_gold_fact_asset_daily(spark)
 
         symbols = args.symbols
         if symbols is None:
             symbols = get_default_optimizer_symbols()
 
         return_matrix_df = build_return_matrix(
-            asset_returns_calendar_df,
+            fact_asset_daily_df,
             symbols,
             args.start_date,
             args.end_date,

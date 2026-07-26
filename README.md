@@ -112,27 +112,29 @@ Main meaning:
 
 ### Gold
 
-Gold contains analytics-ready metrics used by PostgreSQL and Power BI.
+Gold contains the dashboard-ready star schema used by PostgreSQL and Power BI.
 
 ```text
-data/gold/asset_returns/
-data/gold/date_spine/
-data/gold/asset_returns_calendar/
-data/gold/portfolio_returns/
-data/gold/portfolio_returns_calendar/
-data/gold/portfolio_summary/
-data/gold/portfolio_summary_calendar/
-data/gold/optimized_portfolio_summary/
-data/gold/optimized_portfolio_weights/
+data/gold/dim_date/
+data/gold/dim_asset/
+data/gold/dim_portfolio/
+data/gold/fact_asset_daily/
+data/gold/fact_portfolio_daily/
+data/gold/fact_portfolio_summary_daily/
+data/gold/fact_optimizer_summary/
+data/gold/fact_optimizer_weights/
 ```
 
 Important Gold outputs:
 
-- `asset_returns_calendar`: daily calendar asset returns with observed and forward-filled flags
-- `portfolio_returns_calendar`: fixed portfolio daily returns and cumulative returns
-- `portfolio_summary_calendar`: year-to-date portfolio KPIs by date
-- `optimized_portfolio_summary`: historical max-Sharpe portfolio summary
-- `optimized_portfolio_weights`: current weights, optimized weights, and suggested weight differences
+- `dim_date`: one row per calendar date with year, month, day, and weekend attributes
+- `dim_asset`: one row per asset with asset class, source, currency, and active flag
+- `dim_portfolio`: one row per portfolio used in the dashboard
+- `fact_asset_daily`: one row per asset per calendar day with AUD prices, returns, and fill-quality flags
+- `fact_portfolio_daily`: one row per portfolio per calendar day with daily and cumulative return
+- `fact_portfolio_summary_daily`: year-to-date portfolio KPI snapshot by date
+- `fact_optimizer_summary`: historical max-Sharpe optimizer KPI result
+- `fact_optimizer_weights`: current weight, optimized weight, and weight difference by asset
 
 ## Portfolio Logic
 
@@ -150,16 +152,17 @@ Portfolio metrics include:
 
 - daily return
 - cumulative return
+- year-to-date return
 - annualized return
 - annualized volatility
 - Sharpe ratio
 - max drawdown
 
-Calendar-aware tables use 365 days for annualization. Strict actual-observation tables use 252 trading days.
+Gold facts use calendar-aware returns and 365 days for annualization because dashboard timelines include weekends. Portfolio summary facts store `ytd_return` as the compounded return from the start of the year to the selected date. Annualized return, annualized volatility, and Sharpe ratio are left blank until at least 30 observations exist, which avoids misleading early-year values.
 
 ## Optimizer
 
-The optimizer uses `scipy.optimize.minimize` with SLSQP to maximize historical Sharpe ratio from `asset_returns_calendar`.
+The optimizer uses `scipy.optimize.minimize` with SLSQP to maximize historical Sharpe ratio from `fact_asset_daily`.
 
 MVP constraints:
 
@@ -172,8 +175,8 @@ MVP constraints:
 The optimizer writes two dashboard-ready Gold outputs:
 
 ```text
-gold.optimized_portfolio_summary
-gold.optimized_portfolio_weights
+gold.fact_optimizer_summary
+gold.fact_optimizer_weights
 ```
 
 ## PostgreSQL Serving Layer
@@ -183,15 +186,14 @@ Gold Parquet outputs are loaded into PostgreSQL tables for Power BI.
 Current serving tables:
 
 ```text
-gold.asset_returns
-gold.date_spine
-gold.asset_returns_calendar
-gold.portfolio_returns
-gold.portfolio_returns_calendar
-gold.portfolio_summary
-gold.portfolio_summary_calendar
-gold.optimized_portfolio_summary
-gold.optimized_portfolio_weights
+gold.dim_date
+gold.dim_asset
+gold.dim_portfolio
+gold.fact_asset_daily
+gold.fact_portfolio_daily
+gold.fact_portfolio_summary_daily
+gold.fact_optimizer_summary
+gold.fact_optimizer_weights
 audit.load_logs
 ```
 
@@ -329,11 +331,11 @@ python -m src.database.load_gold
 ## Useful SQL Checks
 
 ```sql
-select count(*) from gold.asset_returns_calendar;
-select count(*) from gold.portfolio_returns_calendar;
-select * from gold.portfolio_summary_calendar order by price_date desc limit 10;
-select * from gold.optimized_portfolio_summary;
-select * from gold.optimized_portfolio_weights order by weight_difference desc;
+select count(*) from gold.fact_asset_daily;
+select count(*) from gold.fact_portfolio_daily;
+select * from gold.fact_portfolio_summary_daily order by date_key desc limit 10;
+select * from gold.fact_optimizer_summary;
+select * from gold.fact_optimizer_weights order by weight_difference desc;
 select * from audit.load_logs order by started_at desc;
 ```
 

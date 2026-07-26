@@ -34,10 +34,12 @@ def apply_default_spark_config(builder, enable_ui=False, ui_port=4040):
 
     os.environ["PYSPARK_PYTHON"] = python_executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = python_executable
+    os.environ["SPARK_LOCAL_IP"] = "127.0.0.1"
 
     builder = builder.config("spark.sql.session.timeZone", "UTC")
     builder = builder.config("spark.sql.shuffle.partitions", "4")
     builder = builder.config("spark.driver.bindAddress", "127.0.0.1")
+    builder = builder.config("spark.driver.host", "127.0.0.1")
     builder = builder.config("spark.local.dir", str(SPARK_LOCAL_DIR))
     builder = builder.config("spark.sql.warehouse.dir", SPARK_WAREHOUSE_DIR.as_uri())
     builder = builder.config("spark.hadoop.fs.file.impl", "org.apache.hadoop.fs.RawLocalFileSystem")

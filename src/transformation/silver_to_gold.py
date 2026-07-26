@@ -15,22 +15,24 @@ if __package__ is None or __package__ == "":
     sys.path.append(str(project_root))
 
 from src.transformation.schemas import (
-    gold_asset_return_calendar_schema,
-    gold_asset_return_schema,
-    gold_date_spine_schema,
-    gold_portfolio_return_calendar_schema,
-    gold_portfolio_return_schema,
-    gold_portfolio_summary_schema,
+    gold_dim_asset_schema,
+    gold_dim_date_schema,
+    gold_dim_portfolio_schema,
+    gold_fact_asset_daily_schema,
+    gold_fact_portfolio_daily_schema,
+    gold_fact_portfolio_summary_daily_schema,
     portfolio_weight_schema,
 )
 from src.transformation.spark_session import build_spark_session, stop_spark_session
 from src.utils.config import (
     CALENDAR_DAYS_PER_YEAR,
+    FIXED_PORTFOLIO_NAME,
     FIXED_PORTFOLIO_WEIGHTS,
     GOLD_DIR,
+    MIN_ANNUALIZATION_OBSERVATIONS,
+    OPTIMIZED_PORTFOLIO_NAME,
     RISK_FREE_RATE,
     SILVER_DIR,
-    TRADING_DAYS_PER_YEAR,
 )
 
 
@@ -41,6 +43,13 @@ def read_silver_asset_prices(spark):
     return asset_prices_df
 
 
+def read_silver_assets(spark):
+    path = SILVER_DIR / "assets"
+    assets_df = spark.read.parquet(str(path))
+
+    return assets_df
+
+
 def read_silver_fx_rates(spark):
     path = SILVER_DIR / "fx_rates"
     fx_rates_df = spark.read.parquet(str(path))
@@ -48,116 +57,116 @@ def read_silver_fx_rates(spark):
     return fx_rates_df
 
 
-def build_asset_returns(asset_prices_df, fx_rates_df):
-    fx_lookup_df = fx_rates_df.select(
-        spark_functions.col("rate_date").alias("fx_date"),
-        spark_functions.col("rate").alias("aud_usd_rate"),
-    )
-
-    joined_df = asset_prices_df.join(
-        fx_lookup_df,
-        asset_prices_df.price_date == fx_lookup_df.fx_date,
-        "left",
-    )
-
-    selected_df = joined_df.select(
-        spark_functions.col("symbol").alias("symbol"),
-        spark_functions.col("asset_class").alias("asset_class"),
-        spark_functions.col("source").alias("source"),
-        spark_functions.col("price_date").alias("price_date"),
-        spark_functions.col("close_price").alias("close_price_native"),
-        spark_functions.when(
-            spark_functions.col("currency") == "AUD",
-            spark_functions.col("close_price"),
-        )
-        .when(
-            spark_functions.col("currency") == "USDT",
-            spark_functions.col("close_price") / spark_functions.col("aud_usd_rate"),
-        )
-        .otherwise(None)
-        .alias("close_price_aud"),
-        spark_functions.col("currency").alias("currency"),
-    )
-
-    clean_df = selected_df.filter(spark_functions.col("close_price_aud").isNotNull())
-    clean_df = clean_df.filter(spark_functions.col("close_price_aud") > 0)
-
-    price_window = Window.partitionBy("symbol").orderBy("price_date")
-    return_df = clean_df.withColumn(
-        "previous_close_price_aud",
-        spark_functions.lag(spark_functions.col("close_price_aud")).over(price_window),
-    )
-    return_df = return_df.withColumn(
-        "daily_return",
-        spark_functions.col("close_price_aud") / spark_functions.col("previous_close_price_aud") - spark_functions.lit(1.0),
-    )
-
-    typed_df = apply_gold_asset_return_schema(return_df)
-
-    return typed_df
-
-
-def apply_gold_asset_return_schema(asset_returns_df):
-    schema = gold_asset_return_schema()
-    selected_columns = []
-
-    for field in schema.fields:
-        selected_column = spark_functions.col(field.name).cast(field.dataType).alias(field.name)
-        selected_columns.append(selected_column)
-
-    typed_df = asset_returns_df.select(selected_columns)
-
-    return typed_df
-
-
-def build_date_spine(asset_prices_df):
+def build_dim_date(asset_prices_df):
     bounds_df = asset_prices_df.agg(
         spark_functions.min("price_date").alias("start_date"),
         spark_functions.max("price_date").alias("end_date"),
     )
 
-    date_spine_df = bounds_df.select(
+    dim_date_df = bounds_df.select(
         spark_functions.explode(
             spark_functions.sequence(
                 spark_functions.col("start_date"),
                 spark_functions.col("end_date"),
                 spark_functions.expr("interval 1 day"),
             )
-        ).alias("calendar_date")
+        ).alias("date_key")
+    )
+    dim_date_df = dim_date_df.withColumn("calendar_year", spark_functions.year("date_key"))
+    dim_date_df = dim_date_df.withColumn("calendar_quarter", spark_functions.quarter("date_key"))
+    dim_date_df = dim_date_df.withColumn("calendar_month", spark_functions.month("date_key"))
+    dim_date_df = dim_date_df.withColumn("month_name", spark_functions.date_format("date_key", "MMMM"))
+    dim_date_df = dim_date_df.withColumn("day_of_month", spark_functions.dayofmonth("date_key"))
+    dim_date_df = dim_date_df.withColumn("day_of_week", spark_functions.dayofweek("date_key"))
+    dim_date_df = dim_date_df.withColumn("day_name", spark_functions.date_format("date_key", "EEEE"))
+    dim_date_df = dim_date_df.withColumn(
+        "is_weekend",
+        (spark_functions.col("day_of_week") == spark_functions.lit(1))
+        | (spark_functions.col("day_of_week") == spark_functions.lit(7)),
     )
 
-    typed_df = apply_gold_date_spine_schema(date_spine_df)
+    typed_df = apply_gold_dim_date_schema(dim_date_df)
 
     return typed_df
 
 
-def apply_gold_date_spine_schema(date_spine_df):
-    schema = gold_date_spine_schema()
+def apply_gold_dim_date_schema(dim_date_df):
+    schema = gold_dim_date_schema()
     selected_columns = []
 
     for field in schema.fields:
         selected_column = spark_functions.col(field.name).cast(field.dataType).alias(field.name)
         selected_columns.append(selected_column)
 
-    typed_df = date_spine_df.select(selected_columns)
+    typed_df = dim_date_df.select(selected_columns)
 
     return typed_df
 
 
-def build_forward_filled_fx_rates(fx_rates_df, date_spine_df):
+def build_dim_asset(assets_df):
+    dim_asset_df = assets_df.select(
+        spark_functions.col("symbol"),
+        spark_functions.col("asset_class"),
+        spark_functions.col("source"),
+        spark_functions.col("currency"),
+        spark_functions.col("description"),
+        spark_functions.col("is_active"),
+    )
+    dim_asset_df = dim_asset_df.distinct()
+
+    typed_df = apply_gold_dim_asset_schema(dim_asset_df)
+
+    return typed_df
+
+
+def apply_gold_dim_asset_schema(dim_asset_df):
+    schema = gold_dim_asset_schema()
+    selected_columns = []
+
+    for field in schema.fields:
+        selected_column = spark_functions.col(field.name).cast(field.dataType).alias(field.name)
+        selected_columns.append(selected_column)
+
+    typed_df = dim_asset_df.select(selected_columns)
+
+    return typed_df
+
+
+def build_dim_portfolio_dataframe(spark):
+    rows = [
+        {
+            "portfolio_name": FIXED_PORTFOLIO_NAME,
+            "portfolio_type": "fixed_weight",
+            "description": "Fixed demo portfolio used for dashboard performance analysis.",
+            "is_active": True,
+        },
+        {
+            "portfolio_name": OPTIMIZED_PORTFOLIO_NAME,
+            "portfolio_type": "optimizer",
+            "description": "Historical max-Sharpe portfolio generated by the optimizer.",
+            "is_active": True,
+        },
+    ]
+
+    dim_portfolio_df = spark.createDataFrame(rows, gold_dim_portfolio_schema())
+
+    return dim_portfolio_df
+
+
+def build_forward_filled_fx_rates(fx_rates_df, dim_date_df):
     observed_fx_df = fx_rates_df.select(
         spark_functions.col("rate_date").alias("observed_fx_date"),
         spark_functions.col("rate").alias("observed_aud_usd_rate"),
     )
 
-    joined_df = date_spine_df.join(
+    joined_df = dim_date_df.join(
         observed_fx_df,
-        date_spine_df.calendar_date == observed_fx_df.observed_fx_date,
+        dim_date_df.date_key == observed_fx_df.observed_fx_date,
         "left",
     )
     joined_df = joined_df.withColumn("fx_partition", spark_functions.lit("AUDUSD=X"))
 
-    fx_window = Window.partitionBy("fx_partition").orderBy("calendar_date").rowsBetween(
+    fx_window = Window.partitionBy("fx_partition").orderBy("date_key").rowsBetween(
         Window.unboundedPreceding,
         Window.currentRow,
     )
@@ -180,7 +189,7 @@ def build_forward_filled_fx_rates(fx_rates_df, date_spine_df):
     )
 
     selected_df = filled_df.select(
-        spark_functions.col("calendar_date"),
+        spark_functions.col("date_key"),
         spark_functions.col("aud_usd_rate"),
         spark_functions.col("source_fx_date"),
         spark_functions.col("is_fx_observed"),
@@ -190,7 +199,7 @@ def build_forward_filled_fx_rates(fx_rates_df, date_spine_df):
     return selected_df
 
 
-def build_asset_returns_calendar(asset_prices_df, fx_rates_df, date_spine_df):
+def build_fact_asset_daily(asset_prices_df, fx_rates_df, dim_date_df):
     asset_metadata_df = asset_prices_df.select(
         "symbol",
         "asset_class",
@@ -199,7 +208,7 @@ def build_asset_returns_calendar(asset_prices_df, fx_rates_df, date_spine_df):
     ).distinct()
 
     asset_calendar_df = asset_metadata_df.crossJoin(
-        date_spine_df.select(spark_functions.col("calendar_date").alias("price_date"))
+        dim_date_df.select(spark_functions.col("date_key").alias("price_date"))
     )
 
     observed_prices_df = asset_prices_df.select(
@@ -238,17 +247,15 @@ def build_asset_returns_calendar(asset_prices_df, fx_rates_df, date_spine_df):
     )
     filled_prices_df = filled_prices_df.filter(spark_functions.col("source_price_date").isNotNull())
 
-    fx_filled_df = build_forward_filled_fx_rates(fx_rates_df, date_spine_df)
+    fx_filled_df = build_forward_filled_fx_rates(fx_rates_df, dim_date_df)
     joined_fx_df = filled_prices_df.join(
         fx_filled_df,
-        filled_prices_df.price_date == fx_filled_df.calendar_date,
+        filled_prices_df.price_date == fx_filled_df.date_key,
         "left",
     )
 
     selected_df = joined_fx_df.select(
         spark_functions.col("symbol"),
-        spark_functions.col("asset_class"),
-        spark_functions.col("source"),
         spark_functions.col("price_date"),
         spark_functions.col("close_price_native"),
         spark_functions.when(
@@ -297,26 +304,27 @@ def build_asset_returns_calendar(asset_prices_df, fx_rates_df, date_spine_df):
         "daily_return",
         spark_functions.col("close_price_aud") / spark_functions.col("previous_close_price_aud") - spark_functions.lit(1.0),
     )
+    return_df = return_df.withColumn("date_key", spark_functions.col("price_date"))
 
-    typed_df = apply_gold_asset_return_calendar_schema(return_df)
+    typed_df = apply_gold_fact_asset_daily_schema(return_df)
 
     return typed_df
 
 
-def apply_gold_asset_return_calendar_schema(asset_returns_calendar_df):
-    schema = gold_asset_return_calendar_schema()
+def apply_gold_fact_asset_daily_schema(fact_asset_daily_df):
+    schema = gold_fact_asset_daily_schema()
     selected_columns = []
 
     for field in schema.fields:
         selected_column = spark_functions.col(field.name).cast(field.dataType).alias(field.name)
         selected_columns.append(selected_column)
 
-    typed_df = asset_returns_calendar_df.select(selected_columns)
+    typed_df = fact_asset_daily_df.select(selected_columns)
 
     return typed_df
 
 
-def build_portfolio_weights_dataframe(spark, portfolio_name="fixed_demo", weights=None):
+def build_portfolio_weights_dataframe(spark, portfolio_name=FIXED_PORTFOLIO_NAME, weights=None):
     if weights is None:
         weights = FIXED_PORTFOLIO_WEIGHTS
 
@@ -335,51 +343,8 @@ def build_portfolio_weights_dataframe(spark, portfolio_name="fixed_demo", weight
     return weights_df
 
 
-def build_portfolio_returns(asset_returns_df, portfolio_weights_df):
-    weighted_returns_df = asset_returns_df.join(portfolio_weights_df, "symbol", "inner")
-    weighted_returns_df = weighted_returns_df.filter(spark_functions.col("daily_return").isNotNull())
-    weighted_returns_df = weighted_returns_df.withColumn(
-        "weighted_return",
-        spark_functions.col("daily_return") * spark_functions.col("target_weight"),
-    )
-
-    grouped_df = weighted_returns_df.groupBy("portfolio_name", "price_date").agg(
-        spark_functions.sum("weighted_return").alias("daily_return"),
-        spark_functions.sum("target_weight").alias("available_weight"),
-    )
-
-    complete_df = grouped_df.filter(spark_functions.col("available_weight") >= spark_functions.lit(0.999999))
-
-    portfolio_window = Window.partitionBy("portfolio_name").orderBy("price_date")
-    cumulative_log_return = spark_functions.sum(
-        spark_functions.log(spark_functions.col("daily_return") + spark_functions.lit(1.0))
-    ).over(portfolio_window)
-
-    portfolio_returns_df = complete_df.withColumn(
-        "cumulative_return",
-        spark_functions.exp(cumulative_log_return) - spark_functions.lit(1.0),
-    )
-
-    typed_df = apply_gold_portfolio_return_schema(portfolio_returns_df)
-
-    return typed_df
-
-
-def apply_gold_portfolio_return_schema(portfolio_returns_df):
-    schema = gold_portfolio_return_schema()
-    selected_columns = []
-
-    for field in schema.fields:
-        selected_column = spark_functions.col(field.name).cast(field.dataType).alias(field.name)
-        selected_columns.append(selected_column)
-
-    typed_df = portfolio_returns_df.select(selected_columns)
-
-    return typed_df
-
-
-def build_portfolio_returns_calendar(asset_returns_calendar_df, portfolio_weights_df):
-    weighted_returns_df = asset_returns_calendar_df.join(portfolio_weights_df, "symbol", "inner")
+def build_fact_portfolio_daily(fact_asset_daily_df, portfolio_weights_df):
+    weighted_returns_df = fact_asset_daily_df.join(portfolio_weights_df, "symbol", "inner")
     weighted_returns_df = weighted_returns_df.filter(spark_functions.col("daily_return").isNotNull())
     weighted_returns_df = weighted_returns_df.withColumn(
         "weighted_return",
@@ -398,7 +363,7 @@ def build_portfolio_returns_calendar(asset_returns_calendar_df, portfolio_weight
         spark_functions.when(spark_functions.col("is_fx_forward_filled"), spark_functions.lit(1)).otherwise(spark_functions.lit(0)),
     )
 
-    grouped_df = weighted_returns_df.groupBy("portfolio_name", "price_date").agg(
+    grouped_df = weighted_returns_df.groupBy("portfolio_name", "date_key").agg(
         spark_functions.sum("weighted_return").alias("daily_return"),
         spark_functions.sum("target_weight").alias("available_weight"),
         spark_functions.sum("observed_asset_flag").alias("observed_asset_count"),
@@ -416,45 +381,45 @@ def build_portfolio_returns_calendar(asset_returns_calendar_df, portfolio_weight
         spark_functions.col("forward_filled_fx_count") > spark_functions.lit(0),
     )
 
-    portfolio_window = Window.partitionBy("portfolio_name").orderBy("price_date")
+    portfolio_window = Window.partitionBy("portfolio_name").orderBy("date_key")
     cumulative_log_return = spark_functions.sum(
         spark_functions.log(spark_functions.col("daily_return") + spark_functions.lit(1.0))
     ).over(portfolio_window)
 
-    portfolio_returns_df = complete_df.withColumn(
+    fact_portfolio_daily_df = complete_df.withColumn(
         "cumulative_return",
         spark_functions.exp(cumulative_log_return) - spark_functions.lit(1.0),
     )
 
-    typed_df = apply_gold_portfolio_return_calendar_schema(portfolio_returns_df)
+    typed_df = apply_gold_fact_portfolio_daily_schema(fact_portfolio_daily_df)
 
     return typed_df
 
 
-def apply_gold_portfolio_return_calendar_schema(portfolio_returns_calendar_df):
-    schema = gold_portfolio_return_calendar_schema()
+def apply_gold_fact_portfolio_daily_schema(fact_portfolio_daily_df):
+    schema = gold_fact_portfolio_daily_schema()
     selected_columns = []
 
     for field in schema.fields:
         selected_column = spark_functions.col(field.name).cast(field.dataType).alias(field.name)
         selected_columns.append(selected_column)
 
-    typed_df = portfolio_returns_calendar_df.select(selected_columns)
+    typed_df = fact_portfolio_daily_df.select(selected_columns)
 
     return typed_df
 
 
-def build_portfolio_summary(portfolio_returns_df, risk_free_rate=RISK_FREE_RATE, annualization_days=TRADING_DAYS_PER_YEAR):
+def build_portfolio_summary(portfolio_returns_df, risk_free_rate=RISK_FREE_RATE, annualization_days=CALENDAR_DAYS_PER_YEAR):
     portfolio_value_df = portfolio_returns_df.withColumn(
         "portfolio_value",
         spark_functions.col("cumulative_return") + spark_functions.lit(1.0),
     )
     portfolio_value_df = portfolio_value_df.withColumn(
         "summary_year",
-        spark_functions.year(spark_functions.col("price_date")),
+        spark_functions.year(spark_functions.col("date_key")),
     )
 
-    ytd_window = Window.partitionBy("portfolio_name", "summary_year").orderBy("price_date").rowsBetween(
+    ytd_window = Window.partitionBy("portfolio_name", "summary_year").orderBy("date_key").rowsBetween(
         Window.unboundedPreceding,
         Window.currentRow,
     )
@@ -483,14 +448,34 @@ def build_portfolio_summary(portfolio_returns_df, risk_free_rate=RISK_FREE_RATE,
         "max_drawdown",
         spark_functions.min("drawdown").over(ytd_window),
     )
+    return_stats_df = return_stats_df.withColumn(
+        "ytd_log_return",
+        spark_functions.sum(
+            spark_functions.log(spark_functions.col("daily_return") + spark_functions.lit(1.0))
+        ).over(ytd_window),
+    )
 
     summary_df = return_stats_df.withColumn(
+        "ytd_return",
+        spark_functions.exp(spark_functions.col("ytd_log_return")) - spark_functions.lit(1.0),
+    )
+    summary_df = summary_df.withColumn(
         "annual_return",
-        spark_functions.col("average_daily_return") * spark_functions.lit(annualization_days),
+        spark_functions.when(
+            spark_functions.col("observation_count") >= spark_functions.lit(MIN_ANNUALIZATION_OBSERVATIONS),
+            spark_functions.pow(
+                spark_functions.col("ytd_return") + spark_functions.lit(1.0),
+                spark_functions.lit(float(annualization_days)) / spark_functions.col("observation_count"),
+            )
+            - spark_functions.lit(1.0),
+        ).otherwise(None),
     )
     summary_df = summary_df.withColumn(
         "annual_volatility",
-        spark_functions.col("daily_volatility") * spark_functions.sqrt(spark_functions.lit(annualization_days)),
+        spark_functions.when(
+            spark_functions.col("observation_count") >= spark_functions.lit(MIN_ANNUALIZATION_OBSERVATIONS),
+            spark_functions.col("daily_volatility") * spark_functions.sqrt(spark_functions.lit(annualization_days)),
+        ).otherwise(None),
     )
     summary_df = summary_df.withColumn("risk_free_rate", spark_functions.lit(risk_free_rate))
     summary_df = summary_df.withColumn(
@@ -502,14 +487,14 @@ def build_portfolio_summary(portfolio_returns_df, risk_free_rate=RISK_FREE_RATE,
         ).otherwise(None),
     )
 
-    typed_df = apply_gold_portfolio_summary_schema(summary_df)
+    typed_df = apply_gold_fact_portfolio_summary_daily_schema(summary_df)
 
     return typed_df
 
 
-def build_portfolio_summary_calendar(portfolio_returns_calendar_df, risk_free_rate=RISK_FREE_RATE):
+def build_fact_portfolio_summary_daily(fact_portfolio_daily_df, risk_free_rate=RISK_FREE_RATE):
     portfolio_summary_df = build_portfolio_summary(
-        portfolio_returns_calendar_df,
+        fact_portfolio_daily_df,
         risk_free_rate,
         CALENDAR_DAYS_PER_YEAR,
     )
@@ -517,15 +502,15 @@ def build_portfolio_summary_calendar(portfolio_returns_calendar_df, risk_free_ra
     return portfolio_summary_df
 
 
-def apply_gold_portfolio_summary_schema(portfolio_summary_df):
-    schema = gold_portfolio_summary_schema()
+def apply_gold_fact_portfolio_summary_daily_schema(fact_portfolio_summary_daily_df):
+    schema = gold_fact_portfolio_summary_daily_schema()
     selected_columns = []
 
     for field in schema.fields:
         selected_column = spark_functions.col(field.name).cast(field.dataType).alias(field.name)
         selected_columns.append(selected_column)
 
-    typed_df = portfolio_summary_df.select(selected_columns)
+    typed_df = fact_portfolio_summary_daily_df.select(selected_columns)
 
     return typed_df
 
@@ -636,61 +621,56 @@ def quote_powershell_literal_path(path):
 
  
 def transform_silver_to_gold(spark, mode="overwrite"):
+    assets_df = read_silver_assets(spark)
     asset_prices_df = read_silver_asset_prices(spark)
     fx_rates_df = read_silver_fx_rates(spark)
 
-    asset_returns_df = build_asset_returns(asset_prices_df, fx_rates_df)
-    asset_returns_output_path = write_gold_table(asset_returns_df, "asset_returns", mode)
-    asset_returns_row_count = asset_returns_df.count()
+    dim_date_df = build_dim_date(asset_prices_df)
+    dim_date_output_path = write_gold_table(dim_date_df, "dim_date", mode)
+    dim_date_row_count = dim_date_df.count()
+
+    dim_asset_df = build_dim_asset(assets_df)
+    dim_asset_output_path = write_gold_table(dim_asset_df, "dim_asset", mode)
+    dim_asset_row_count = dim_asset_df.count()
+
+    dim_portfolio_df = build_dim_portfolio_dataframe(spark)
+    dim_portfolio_output_path = write_gold_table(dim_portfolio_df, "dim_portfolio", mode)
+    dim_portfolio_row_count = dim_portfolio_df.count()
 
     weights_df = build_portfolio_weights_dataframe(spark)
-    portfolio_returns_df = build_portfolio_returns(asset_returns_df, weights_df)
-    portfolio_returns_output_path = write_gold_table(portfolio_returns_df, "portfolio_returns", mode)
-    portfolio_returns_row_count = portfolio_returns_df.count()
+    fact_asset_daily_df = build_fact_asset_daily(asset_prices_df, fx_rates_df, dim_date_df)
+    fact_asset_daily_output_path = write_gold_table(fact_asset_daily_df, "fact_asset_daily", mode)
+    fact_asset_daily_row_count = fact_asset_daily_df.count()
 
-    portfolio_summary_df = build_portfolio_summary(portfolio_returns_df)
-    portfolio_summary_output_path = write_gold_table(portfolio_summary_df, "portfolio_summary", mode)
-    portfolio_summary_row_count = portfolio_summary_df.count()
-
-    date_spine_df = build_date_spine(asset_prices_df)
-    date_spine_output_path = write_gold_table(date_spine_df, "date_spine", mode)
-    date_spine_row_count = date_spine_df.count()
-
-    asset_returns_calendar_df = build_asset_returns_calendar(asset_prices_df, fx_rates_df, date_spine_df)
-    asset_returns_calendar_output_path = write_gold_table(asset_returns_calendar_df, "asset_returns_calendar", mode)
-    asset_returns_calendar_row_count = asset_returns_calendar_df.count()
-
-    portfolio_returns_calendar_df = build_portfolio_returns_calendar(asset_returns_calendar_df, weights_df)
-    portfolio_returns_calendar_output_path = write_gold_table(
-        portfolio_returns_calendar_df,
-        "portfolio_returns_calendar",
+    fact_portfolio_daily_df = build_fact_portfolio_daily(fact_asset_daily_df, weights_df)
+    fact_portfolio_daily_output_path = write_gold_table(
+        fact_portfolio_daily_df,
+        "fact_portfolio_daily",
         mode,
     )
-    portfolio_returns_calendar_row_count = portfolio_returns_calendar_df.count()
+    fact_portfolio_daily_row_count = fact_portfolio_daily_df.count()
 
-    portfolio_summary_calendar_df = build_portfolio_summary_calendar(portfolio_returns_calendar_df)
-    portfolio_summary_calendar_output_path = write_gold_table(
-        portfolio_summary_calendar_df,
-        "portfolio_summary_calendar",
+    fact_portfolio_summary_daily_df = build_fact_portfolio_summary_daily(fact_portfolio_daily_df)
+    fact_portfolio_summary_daily_output_path = write_gold_table(
+        fact_portfolio_summary_daily_df,
+        "fact_portfolio_summary_daily",
         mode,
     )
-    portfolio_summary_calendar_row_count = portfolio_summary_calendar_df.count()
+    fact_portfolio_summary_daily_row_count = fact_portfolio_summary_daily_df.count()
 
     result = {
-        "asset_returns_row_count": asset_returns_row_count,
-        "asset_returns_output_path": str(asset_returns_output_path),
-        "portfolio_returns_row_count": portfolio_returns_row_count,
-        "portfolio_returns_output_path": str(portfolio_returns_output_path),
-        "portfolio_summary_row_count": portfolio_summary_row_count,
-        "portfolio_summary_output_path": str(portfolio_summary_output_path),
-        "date_spine_row_count": date_spine_row_count,
-        "date_spine_output_path": str(date_spine_output_path),
-        "asset_returns_calendar_row_count": asset_returns_calendar_row_count,
-        "asset_returns_calendar_output_path": str(asset_returns_calendar_output_path),
-        "portfolio_returns_calendar_row_count": portfolio_returns_calendar_row_count,
-        "portfolio_returns_calendar_output_path": str(portfolio_returns_calendar_output_path),
-        "portfolio_summary_calendar_row_count": portfolio_summary_calendar_row_count,
-        "portfolio_summary_calendar_output_path": str(portfolio_summary_calendar_output_path),
+        "dim_date_row_count": dim_date_row_count,
+        "dim_date_output_path": str(dim_date_output_path),
+        "dim_asset_row_count": dim_asset_row_count,
+        "dim_asset_output_path": str(dim_asset_output_path),
+        "dim_portfolio_row_count": dim_portfolio_row_count,
+        "dim_portfolio_output_path": str(dim_portfolio_output_path),
+        "fact_asset_daily_row_count": fact_asset_daily_row_count,
+        "fact_asset_daily_output_path": str(fact_asset_daily_output_path),
+        "fact_portfolio_daily_row_count": fact_portfolio_daily_row_count,
+        "fact_portfolio_daily_output_path": str(fact_portfolio_daily_output_path),
+        "fact_portfolio_summary_daily_row_count": fact_portfolio_summary_daily_row_count,
+        "fact_portfolio_summary_daily_output_path": str(fact_portfolio_summary_daily_output_path),
     }
 
     return result
@@ -712,13 +692,15 @@ def main():
     try:
         spark = build_spark_session("finance-market-data-silver-to-gold", args.master)
         result = transform_silver_to_gold(spark, args.mode)
-        print(f"Wrote {result['asset_returns_row_count']} rows to {result['asset_returns_output_path']}")
-        print(f"Wrote {result['portfolio_returns_row_count']} rows to {result['portfolio_returns_output_path']}")
-        print(f"Wrote {result['portfolio_summary_row_count']} rows to {result['portfolio_summary_output_path']}")
-        print(f"Wrote {result['date_spine_row_count']} rows to {result['date_spine_output_path']}")
-        print(f"Wrote {result['asset_returns_calendar_row_count']} rows to {result['asset_returns_calendar_output_path']}")
-        print(f"Wrote {result['portfolio_returns_calendar_row_count']} rows to {result['portfolio_returns_calendar_output_path']}")
-        print(f"Wrote {result['portfolio_summary_calendar_row_count']} rows to {result['portfolio_summary_calendar_output_path']}")
+        print(f"Wrote {result['dim_date_row_count']} rows to {result['dim_date_output_path']}")
+        print(f"Wrote {result['dim_asset_row_count']} rows to {result['dim_asset_output_path']}")
+        print(f"Wrote {result['dim_portfolio_row_count']} rows to {result['dim_portfolio_output_path']}")
+        print(f"Wrote {result['fact_asset_daily_row_count']} rows to {result['fact_asset_daily_output_path']}")
+        print(f"Wrote {result['fact_portfolio_daily_row_count']} rows to {result['fact_portfolio_daily_output_path']}")
+        print(
+            f"Wrote {result['fact_portfolio_summary_daily_row_count']} rows to "
+            f"{result['fact_portfolio_summary_daily_output_path']}"
+        )
     finally:
         stop_spark_session(spark)
 

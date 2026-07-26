@@ -11,14 +11,103 @@ SPARK_LOCAL_DIR = DATA_DIR / "tmp" / "spark"
 SPARK_WAREHOUSE_DIR = DATA_DIR / "tmp" / "spark-warehouse"
 
 
-EQUITY_SYMBOLS = ["CBA.AX", "BHP.AX", "CSL.AX", "WOW.AX", "VAS.AX"]
-CRYPTO_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+EQUITY_SYMBOLS = [
+    # Major Australian banks
+    "CBA.AX",
+    "WBC.AX",
+    "NAB.AX",
+    "ANZ.AX",
+    "MQG.AX",
+
+    # Mining and resources
+    "BHP.AX",
+    "RIO.AX",
+    "FMG.AX",
+    "MIN.AX",
+    "S32.AX",
+    "WDS.AX",
+    "STO.AX",
+
+    # Healthcare
+    "CSL.AX",
+    "RMD.AX",
+    "COH.AX",
+    "SHL.AX",
+
+    # Consumer and retail
+    "WOW.AX",
+    "COL.AX",
+    "WES.AX",
+    "JBH.AX",
+
+    # Technology and telecommunications
+    "XRO.AX",
+    "REA.AX",
+    "CAR.AX",
+    "TLS.AX",
+
+    # Infrastructure and industrials
+    "TCL.AX",
+    "QAN.AX",
+    "ALL.AX",
+
+    # Australian ETFs
+    "VAS.AX",
+    "A200.AX",
+    "VGS.AX",
+]
+
+CRYPTO_SYMBOLS = [
+    # Large-cap cryptocurrencies
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "SOLUSDT",
+    "ADAUSDT",
+    "DOGEUSDT",
+    "TRXUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+
+    # Layer 1 and Layer 2
+    "DOTUSDT",
+    "NEARUSDT",
+    "ATOMUSDT",
+    "SUIUSDT",
+    "APTUSDT",
+    "ARBUSDT",
+    "OPUSDT",
+    "POLUSDT",
+
+    # DeFi
+    "UNIUSDT",
+    "AAVEUSDT",
+    "MKRUSDT",
+    "LDOUSDT",
+    "INJUSDT",
+
+    # Infrastructure and data
+    "FILUSDT",
+    "ICPUSDT",
+    "GRTUSDT",
+
+    # Other widely traded assets
+    "LTCUSDT",
+    "BCHUSDT",
+    "ETCUSDT",
+    "XLMUSDT",
+]
+
 FX_SYMBOL = "AUDUSD=X"
-DEFAULT_START_DATE = "2025-06-30"
+DEFAULT_START_DATE = "2020-01-01"
 VALIDATION_FAILURE_THRESHOLD = 0.25
 TRADING_DAYS_PER_YEAR = 252
 CALENDAR_DAYS_PER_YEAR = 365
+MIN_ANNUALIZATION_OBSERVATIONS = 30
 RISK_FREE_RATE = 0.0435
+FIXED_PORTFOLIO_NAME = "fixed_demo"
+OPTIMIZED_PORTFOLIO_NAME = "max_sharpe_calendar"
 FIXED_PORTFOLIO_WEIGHTS = [
     {"symbol": "VAS.AX", "weight": 0.40},
     {"symbol": "CBA.AX", "weight": 0.25},
